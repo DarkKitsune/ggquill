@@ -21,9 +21,9 @@ mod tests {
         const SEED: u64 = 46364;
         const TEMP: f64 = 0.65;
         const POEM_THEMES: &[&str] = &[
-            "a short detective mystery",
-            "a short space adventure",
-            "a short fantasy quest",
+            "a magical adventure in a fantasy world",
+            "the beauty of nature in spring",
+            "breaking free from constraints and embracing freedom",
         ];
 
         // Create a new pipeline
@@ -38,8 +38,8 @@ mod tests {
                 Make sure the poem rhymes and has a nice flow.",
             [],
             "Write a rhyming poem based on the following theme: {theme}",
-            "Here is the poem:\n",
-            [],
+            "Certainly, here is the poem:\n\n\"",
+            ["\"".to_string()],
             TEMP,
         );
 
@@ -102,7 +102,9 @@ mod tests {
                 1.1,
                 64,
             );
-            println!("\n{}\n", chat.last_message().unwrap());
+            let message = chat.last_message().unwrap().content();
+            
+            println!("\nAssistant: {}\n", message);
         }
     }
 
@@ -178,7 +180,7 @@ mod tests {
 
     #[test]
     fn action_extraction() {
-        const SEED: u64 = 3525;
+        const SEED: u64 = 634667374;
         const ATTEMPTS: usize = 5;
 
         // Create the model
@@ -190,31 +192,38 @@ mod tests {
         // Add some action patterns
         extractor
             .add_action_pattern(ActionPattern::new(
-                "travel",
-                vec![("direction".to_string(), ArgType::String)],
+                "go_somewhere",
+                vec![("destination_name".to_string(), ArgType::String)],
             ))
             .unwrap();
         extractor
             .add_action_pattern(ActionPattern::new(
-                "attack",
-                vec![("target_name".to_string(), ArgType::String)],
+                "attack_something",
+                vec![("weapon_name".to_string(), ArgType::String), ("target_name".to_string(), ArgType::String)],
             ))
             .unwrap();
         extractor
             .add_action_pattern(ActionPattern::new(
-                "say",
-                vec![("text_to_say".to_string(), ArgType::String)],
+                "say_something",
+                vec![("what_to_say".to_string(), ArgType::String)],
+            ))
+            .unwrap();
+        extractor
+            .add_action_pattern(ActionPattern::new(
+                "do_something_else",
+                vec![("what_to_do".to_string(), ArgType::String)],
             ))
             .unwrap();
 
         // Extract some actions from text
         let text_strings = [
             "Go north",
-            "Go south",
-            "Attack the goblin",
-            "Tell a funny joke",
+            "Do a funny dance and wink",
+            "Break the nearest crate with your sword",
+            "Attack the goblin with your bow",
+            "Tell a funny joke about dragons",
             "Kill the villagers",
-            "Walk to the east",
+            "Quickly run to the east",
         ];
 
         for text in text_strings {
@@ -246,9 +255,9 @@ mod tests {
             1.1,
             64
         );
-        let weapon: String = prediction.next_value(Some("Weapon: "));
-        let clothing = prediction.next_value(Some("Clothing: "));
-        let hometown = prediction.next_value(Some("Hometown: "));
+        let weapon: String = prediction.next_value(Some(" Weapon: "));
+        let clothing = prediction.next_value(Some(" Clothing: "));
+        let hometown = prediction.next_value(Some(" Hometown: "));
         println!("Predicted character bio:\nName: Jessie\nAge: 19\nClass: Archer\nWeapon: {}\nClothing: {}\nHometown: {}", weapon, clothing, hometown);
     }
 

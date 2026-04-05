@@ -69,7 +69,7 @@ impl ModelType {
                 ModelSize::Large => ModelRepo::hub("Qwen/Qwen3-8B"),
             },
             ModelType::Qwen3Vl(_) => ModelRepo::hub("Qwen/Qwen3-VL-2B-Instruct"),
-            ModelType::Qwen3Special => ModelRepo::local("./model/qwen3-special-4b"),
+            ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
             ModelType::Qwen3InstructAbl => {
                 ModelRepo::hub("Goekdeniz-Guelmez/Josiefied-Qwen3-4B-abliterated-v2")
             }

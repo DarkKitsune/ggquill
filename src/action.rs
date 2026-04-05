@@ -4,21 +4,21 @@ use anyhow::Result;
 
 use crate::{
     chat::{Chat, ChatRole},
-    model::Model,
+    model::{Model, nudge_temperature},
 };
 
 /// Represents a single action pattern which an `ActionExtractor` can recognize
 #[derive(Clone, Debug)]
 pub struct ActionPattern {
     name: String,
-    arguments: Vec<(String, ArgType)>,
+    parameters: Vec<(String, ArgType)>,
 }
 
 impl ActionPattern {
-    pub fn new(name: impl Display, arguments: Vec<(String, ArgType)>) -> Self {
+    pub fn new(name: impl Display, parameters: Vec<(String, ArgType)>) -> Self {
         Self {
             name: name.to_string(),
-            arguments,
+            parameters,
         }
     }
 
@@ -26,8 +26,8 @@ impl ActionPattern {
         &self.name
     }
 
-    pub fn arguments(&self) -> &[(String, ArgType)] {
-        &self.arguments
+    pub fn parameters(&self) -> &[(String, ArgType)] {
+        &self.parameters
     }
 }
 
@@ -89,20 +89,20 @@ impl ActionExtractor {
         // Inform the model about the currently known action patterns
         chat.set_system_prompt(format!(
             "You are a helpful coding assistant who writes function calls representing \
-                the given text.\n\n<functions>\n\n{}\n\n</functions>",
+                text.\n\nYou can call any of the following functions:\n{}",
             self.patterns
                 .iter()
                 .map(|p| format!(
-                    "function fn_{}({}) {{...}}",
+                    "- function fn_{}({})",
                     p.name().trim(),
-                    p.arguments()
+                    p.parameters()
                         .iter()
                         .map(|(name, ty)| format!("{}: {}", name, ty.typescript_type()))
                         .collect::<Vec<_>>()
                         .join(", ")
                 ))
                 .collect::<Vec<_>>()
-                .join("\n\n")
+                .join("\n")
         ));
 
         // Ask the model to generate the appropriate function call for the given text
@@ -115,16 +115,16 @@ impl ActionExtractor {
         );
 
         // Start off the model's response to force it to stick to the format
-        chat.set_response_prefix(Some("fn_".to_string()));
+        chat.set_response_prefix(Some("**Function call:**\nfn_".to_string()));
 
         // Try getting the response from the model up to `attempts` times,
         // only returning a response if it matches one of the action patterns
-        let mut found_action = None;
+        let mut temperature = 0.0;
         for i in 0..attempts {
             // Start getting the response back
             let mut action_name_iter = self
                 .model
-                .chat(&chat, &ChatRole::Model, false, i as u64, None, None, 1.0, 0)
+                .chat(&chat, &ChatRole::Model, false, i as u64, Some(temperature), None, 1.0, 0)
                 .0;
 
             // Keep track of the possible actions that the model might be referring to
@@ -150,29 +150,38 @@ impl ActionExtractor {
                 // Store the name
                 let found_action_name = possible_actions[0].to_string();
 
+                // Get the pattern for the found action so we can match the arguments to its parameters
+                let found_pattern = self
+                    .patterns
+                    .iter()
+                    .find(|p| p.name() == found_action_name)
+                    .unwrap();
+
                 // Get the arguments by editing the response prefix and inferring til )
                 chat.set_response_prefix(Some(format!("fn_{}(", found_action_name)));
-                let argument_string = self
+                let mut argument_iter = self
                     .model
                     .chat(&chat, &ChatRole::Model, false, i as u64, None, None, 1.0, 0)
-                    .0
-                    .complete(&[")", "\n"])
                     .0;
 
-                // Parse the argument string into individual arguments
-                let arguments = argument_string
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .collect::<Vec<_>>();
+                // For each parameter, get the next value from the argument string using the parameter name
+                let mut arguments = Vec::new();
+                for (param_name, _) in found_pattern.parameters() {
+                    let optional_comma = if arguments.is_empty() { "" } else { ", " };
+                    let inferred = argument_iter.next_value(Some(&format!("{}{}:", optional_comma, param_name)))
+                        .trim()
+                        .to_string();
+                    arguments.push(inferred);
+                }
 
-                found_action = Some(Action::new(found_action_name, arguments));
-
-                break;
+                return Some(Action::new(found_action_name, arguments));
             }
+
+            // If there are multiple possible actions left, then nudge the temperature and try again
+            nudge_temperature(&mut temperature);
         }
 
-        // Return the found action, if any
-        found_action
+        None
     }
 }
 

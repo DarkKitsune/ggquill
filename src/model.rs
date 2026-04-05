@@ -167,7 +167,7 @@ impl Model {
 
         // Create the iterator
         Ok(InferIter::new(
-            self.model_type.clone(),
+            self.model_type,
             self.device.clone(),
             prompt,
             self.vocab_size,
@@ -353,6 +353,6 @@ impl DynConfig {
 
 /// Nudge a temperature value towards 1.0 without ever reaching it.
 /// Useful for iterative tasks.
-fn nudge_temperature(temp: &mut f64) {
+pub(crate) fn nudge_temperature(temp: &mut f64) {
     *temp += (1.0 - *temp) * 0.15;
 }

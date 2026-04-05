@@ -185,6 +185,15 @@ impl SceneTurn {
             SceneTurn::Action(actor, _) => Some(actor),
         }
     }
+
+    /// Get the main content of this turn as a string slice.
+    pub fn content(&self) -> &str {
+        match self {
+            SceneTurn::Story(text) => text,
+            SceneTurn::Dialogue(_, text) => text,
+            SceneTurn::Action(_, action) => action,
+        }
+    }
 }
 
 impl Display for SceneTurn {
