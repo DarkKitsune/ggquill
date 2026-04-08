@@ -103,7 +103,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn predict_chain() {
         const SEED: u64 = 13579;

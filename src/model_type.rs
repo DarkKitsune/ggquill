@@ -172,11 +172,19 @@ impl ModelType {
     }
 
     /// Creates a chat prompt meant for this type of Phi model.
-    pub fn create_chat_prompt(&self, chat_system_prompt: impl AsRef<str>, chat_history: &[ChatMessage], extra_data: Option<&JsonMap>) -> String {
+    pub fn create_chat_prompt(
+        &self,
+        chat_system_prompt: impl AsRef<str>,
+        chat_history: &[ChatMessage],
+        extra_data: Option<&JsonMap>,
+    ) -> String {
         let mut prompt = String::new();
 
         // Add the system prompt to the system section
-        prompt.push_str(&format!("<|im_start|>system\n{}\n", chat_system_prompt.as_ref()));
+        prompt.push_str(&format!(
+            "<|im_start|>system\n{}\n",
+            chat_system_prompt.as_ref()
+        ));
 
         // Add extra data as key-value pairs for the model to understand
         if let Some(extra_data) = extra_data {
@@ -217,16 +225,11 @@ impl ModelType {
         prompt
     }
 
-    pub fn create_chat_message_begin_prompt(
-        &self,
-        sender: &ChatRole,
-    ) -> String {
+    pub fn create_chat_message_begin_prompt(&self, sender: &ChatRole) -> String {
         format!("<|im_start|>{}\n", self.chat_role_name(sender))
     }
 
-    pub fn create_chat_message_end_prompt(
-        &self,
-    ) -> String {
+    pub fn create_chat_message_end_prompt(&self) -> String {
         "<|im_end|>\n".to_string()
     }
 

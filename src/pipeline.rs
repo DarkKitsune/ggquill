@@ -76,17 +76,14 @@ impl PipelineStep {
                 if !end_sequences.iter().any(|s| s.contains("---")) {
                     end_sequences.push("---");
                 }
-                
+
                 // Build the chat
                 let mut chat = Chat::new(model, system_prompt, &chat_history, *seed, Some(*temp));
                 chat.push_message(ChatMessage::new(ChatRole::User, user_prompt));
 
                 // Infer the model's response with the provided end sequences and response prefix
-                let response = chat.infer_message(
-                    &ChatRole::Model,
-                    &end_sequences,
-                    Some(response_prefix),
-                );
+                let response =
+                    chat.infer_message(&ChatRole::Model, &end_sequences, Some(response_prefix));
 
                 // Store the response in the context under output_key
                 context.insert(output_key.clone(), JsonValue::String(response.to_string()));

@@ -122,7 +122,11 @@ impl InferIter {
 
     /// Run the iterator until completion or until one of `end_sequences` is generated
     /// and return everything up to that point as a `String`, as well as the end sequence that was reached
-    pub fn complete<'a>(&mut self, end_sequences: &'a [&str], prefix: Option<&str>) -> (String, Option<&'a str>) {
+    pub fn complete<'a>(
+        &mut self,
+        end_sequences: &'a [&str],
+        prefix: Option<&str>,
+    ) -> (String, Option<&'a str>) {
         let mut response = String::new();
         let mut prefix = prefix;
         while let Some(token) = self.next_token(prefix)

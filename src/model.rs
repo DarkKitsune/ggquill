@@ -260,6 +260,6 @@ impl DynConfig {
 
 /// Nudge a temperature value towards 1.0 without ever reaching it.
 /// Useful for iterative tasks.
-pub(crate) fn nudge_temperature(temp: &mut f64) {
+pub fn nudge_temperature(temp: &mut f64) {
     *temp += (1.0 - *temp) * 0.15;
 }
