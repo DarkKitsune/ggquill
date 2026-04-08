@@ -124,7 +124,16 @@ impl ActionExtractor {
             // Start getting the response back
             let mut action_name_iter = self
                 .model
-                .chat(&chat, &ChatRole::Model, false, i as u64, Some(temperature), None, 1.0, 0)
+                .chat(
+                    &chat,
+                    &ChatRole::Model,
+                    false,
+                    i as u64,
+                    Some(temperature),
+                    None,
+                    1.0,
+                    0,
+                )
                 .0;
 
             // Keep track of the possible actions that the model might be referring to
@@ -168,7 +177,8 @@ impl ActionExtractor {
                 let mut arguments = Vec::new();
                 for (param_name, _) in found_pattern.parameters() {
                     let optional_comma = if arguments.is_empty() { "" } else { ", " };
-                    let inferred = argument_iter.next_value(Some(&format!("{}{}:", optional_comma, param_name)))
+                    let inferred = argument_iter
+                        .next_value(Some(&format!("{}{}:", optional_comma, param_name)))
                         .trim()
                         .to_string();
                     arguments.push(inferred);

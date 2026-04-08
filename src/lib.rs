@@ -44,7 +44,11 @@ mod tests {
         );
 
         // Add a step to the pipeline which summarizes the poem in {poem} and stores the summary in the context under {summary}
-        pipeline.summarize("summary", "poem", Some("The summary must be a poem too.".to_string()));
+        pipeline.summarize(
+            "summary",
+            "poem",
+            Some("The summary must be a poem too.".to_string()),
+        );
 
         // Create the model
         let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
@@ -103,8 +107,183 @@ mod tests {
                 64,
             );
             let message = chat.last_message().unwrap().content();
-            
+
             println!("\nAssistant: {}\n", message);
+        }
+    }
+
+    #[test]
+    fn action_extraction() {
+        const SEED: u64 = 634667374;
+        const ATTEMPTS: usize = 5;
+
+        // Create the model
+        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+
+        // Create an action extractor
+        let mut extractor = ActionExtractor::new(model.clone());
+
+        // Add some action patterns
+        extractor
+            .add_action_pattern(ActionPattern::new(
+                "go_somewhere",
+                vec![("destination_name".to_string(), ArgType::String)],
+            ))
+            .unwrap();
+        extractor
+            .add_action_pattern(ActionPattern::new(
+                "attack_something",
+                vec![
+                    ("weapon_name".to_string(), ArgType::String),
+                    ("target_name".to_string(), ArgType::String),
+                ],
+            ))
+            .unwrap();
+        extractor
+            .add_action_pattern(ActionPattern::new(
+                "say_something",
+                vec![("what_to_say".to_string(), ArgType::String)],
+            ))
+            .unwrap();
+        extractor
+            .add_action_pattern(ActionPattern::new(
+                "do_something_else",
+                vec![("what_to_do".to_string(), ArgType::String)],
+            ))
+            .unwrap();
+
+        // Extract some actions from text
+        let text_strings = [
+            "Go north",
+            "Do a funny dance and wink",
+            "Break the nearest crate with your sword",
+            "Attack the goblin with your bow",
+            "Tell a funny joke about dragons",
+            "Kill the villagers",
+            "Quickly run to the east",
+        ];
+
+        for text in text_strings {
+            let action = extractor.extract_action(text, ATTEMPTS);
+            println!(
+                "Extracted action from '{}': {}",
+                text,
+                action
+                    .as_ref()
+                    .map(Action::to_string)
+                    .unwrap_or("None".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn predict_chain() {
+        const SEED: u64 = 13579;
+        const TEMP: f64 = 0.5;
+
+        // Create the model
+        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+
+        let mut prediction = model.predict_next(
+            "Here is my character bio:\nName: Jessie\nAge: 19\nClass: Archer\n",
+            SEED,
+            Some(TEMP),
+            None,
+            1.1,
+            64,
+        );
+        let weapon: String = prediction.next_value(Some(" Weapon: "));
+        let clothing = prediction.next_value(Some(" Clothing: "));
+        let hometown = prediction.next_value(Some(" Hometown: "));
+        println!(
+            "Predicted character bio:\nName: Jessie\nAge: 19\nClass: Archer\nWeapon: {}\nClothing: {}\nHometown: {}",
+            weapon, clothing, hometown
+        );
+    }
+
+    #[test]
+    fn generate_story() {
+        const SEED: u64 = 547845;
+        const TEMP: f64 = 0.6;
+
+        // Create the model
+        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+
+        // Generate a story
+        let mut story = "There was once".to_string();
+        story.push_str(
+            &model
+                .predict_next(
+                    "long_story = \"There was once",
+                    SEED,
+                    Some(TEMP),
+                    None,
+                    1.1,
+                    64,
+                )
+                .complete(&["\""])
+                .0,
+        );
+        println!("Generated story:\n{}", story);
+    }
+
+    #[test]
+    fn thinking_simple_math() {
+        const SEED: u64 = 3463;
+        const TEMP: f64 = 0.6;
+
+        // Create the model and chat
+        let model = Model::new(ModelType::Qwen3(ModelSize::Medium), SEED, true).unwrap();
+
+        // Give the model a simple problem to think about
+        let (result, thoughts) = model.instruct(
+            "If a train leaves Station A at 60 mph and another leaves Station B 100 \
+                miles away at 40 mph towards each other, when do they meet?",
+            true,
+            SEED,
+            Some(TEMP),
+            None,
+            1.1,
+            64,
+        );
+        let result = result.complete(&[]).0.trim().to_string();
+
+        println!(
+            "\nThoughts:\n{}\nRest:\n{}\n",
+            thoughts.unwrap_or_default(),
+            result
+        );
+    }
+
+    #[test]
+    fn concat_strings() {
+        const SEED: u64 = 3463;
+        const CONCAT_STRINGS: &[&[&str]] = &[
+            &["Johnathan", "take a long walk in the park"],
+            &["The quick brown fox", "jumping over the lazy dog"],
+            &["Rust", "programming", "is super fun", "and rewarding"],
+            &[
+                "This",
+                "is",
+                "a",
+                "test",
+                "of",
+                "concatenating",
+                "many",
+                "strings",
+            ],
+            &["Please inform", "Jason", "the meeting", "at 2:00 PM"],
+        ];
+
+        // Create the model and chat
+        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+
+        for strings in CONCAT_STRINGS {
+            let concatenated = model.join(strings, SEED, Some(0.6));
+            println!(
+                "Joining the strings {:?} gives:\n{}\n",
+                strings, concatenated
+            );
         }
     }
 
@@ -176,142 +355,5 @@ mod tests {
 
         // Print the scene
         println!("Scene:\n{}", scene);
-    }
-
-    #[test]
-    fn action_extraction() {
-        const SEED: u64 = 634667374;
-        const ATTEMPTS: usize = 5;
-
-        // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
-
-        // Create an action extractor
-        let mut extractor = ActionExtractor::new(model.clone());
-
-        // Add some action patterns
-        extractor
-            .add_action_pattern(ActionPattern::new(
-                "go_somewhere",
-                vec![("destination_name".to_string(), ArgType::String)],
-            ))
-            .unwrap();
-        extractor
-            .add_action_pattern(ActionPattern::new(
-                "attack_something",
-                vec![("weapon_name".to_string(), ArgType::String), ("target_name".to_string(), ArgType::String)],
-            ))
-            .unwrap();
-        extractor
-            .add_action_pattern(ActionPattern::new(
-                "say_something",
-                vec![("what_to_say".to_string(), ArgType::String)],
-            ))
-            .unwrap();
-        extractor
-            .add_action_pattern(ActionPattern::new(
-                "do_something_else",
-                vec![("what_to_do".to_string(), ArgType::String)],
-            ))
-            .unwrap();
-
-        // Extract some actions from text
-        let text_strings = [
-            "Go north",
-            "Do a funny dance and wink",
-            "Break the nearest crate with your sword",
-            "Attack the goblin with your bow",
-            "Tell a funny joke about dragons",
-            "Kill the villagers",
-            "Quickly run to the east",
-        ];
-
-        for text in text_strings {
-            let action = extractor.extract_action(text, ATTEMPTS);
-            println!(
-                "Extracted action from '{}': {}",
-                text,
-                action
-                    .as_ref()
-                    .map(Action::to_string)
-                    .unwrap_or("None".to_string())
-            );
-        }
-    }
-
-    #[test]
-    fn predict_chain() {
-        const SEED: u64 = 13579;
-        const TEMP: f64 = 0.5;
-
-        // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
-
-        let mut prediction = model.predict_next(
-            "Here is my character bio:\nName: Jessie\nAge: 19\nClass: Archer\n",
-            SEED,
-            Some(TEMP),
-            None,
-            1.1,
-            64
-        );
-        let weapon: String = prediction.next_value(Some(" Weapon: "));
-        let clothing = prediction.next_value(Some(" Clothing: "));
-        let hometown = prediction.next_value(Some(" Hometown: "));
-        println!("Predicted character bio:\nName: Jessie\nAge: 19\nClass: Archer\nWeapon: {}\nClothing: {}\nHometown: {}", weapon, clothing, hometown);
-    }
-
-    #[test]
-    fn generate_story() {
-        const SEED: u64 = 547845;
-        const TEMP: f64 = 0.6;
-
-        // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
-
-        // Generate a story
-        let mut story = "There was once".to_string();
-        story.push_str(
-            &model
-                .predict_next(
-                    "long_story = \"There was once",
-                    SEED,
-                    Some(TEMP),
-                    None,
-                    1.1,
-                    64,
-                )
-                .complete(&["\""])
-                .0,
-        );
-        println!("Generated story:\n{}", story);
-    }
-
-    #[test]
-    fn thinking_simple_math() {
-        const SEED: u64 = 3463;
-        const TEMP: f64 = 0.6;
-
-        // Create the model and chat
-        let model = Model::new(ModelType::Qwen3(ModelSize::Medium), SEED, true).unwrap();
-
-        // Give the model a simple problem to think about
-        let (result, thoughts) = model.instruct(
-            "If a train leaves Station A at 60 mph and another leaves Station B 100 \
-                miles away at 40 mph towards each other, when do they meet?",
-            true,
-            SEED,
-            Some(TEMP),
-            None,
-            1.1,
-            64,
-        );
-        let result = result.complete(&[]).0.trim().to_string();
-
-        println!(
-            "\nThoughts:\n{}\nRest:\n{}\n",
-            thoughts.unwrap_or_default(),
-            result
-        );
     }
 }

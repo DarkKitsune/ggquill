@@ -174,7 +174,6 @@ impl InferIter {
             }
         }
         response
-
     }
 
     /// Run the iterator until the current bracket is closed and return everything up to that point as a `String`.

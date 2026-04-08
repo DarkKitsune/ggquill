@@ -114,8 +114,7 @@ impl Model {
 
     pub(crate) fn detokenize(&self, tokens: impl AsRef<[u32]>) -> String {
         // Decode the tokens into a string
-        self
-            .tokenizer
+        self.tokenizer
             .decode(tokens.as_ref(), true)
             .map_err(E::msg)
             .unwrap()
@@ -289,6 +288,52 @@ impl Model {
     ) -> InferIter {
         self.infer_iter(prompt, seed, temp, top_p, repeat_penalty, repeat_last_n)
             .unwrap()
+    }
+
+    /// Join several strings together using the model to fill in the gaps, returning the final string.
+    /// Internally, the | character is used to separate the input strings, and is not removed from input_strings.
+    pub fn join(&self, input_strings: &[impl AsRef<str>], seed: u64, temp: Option<f64>) -> String {
+        const EXAMPLE_CONCATENATIONS: &[(&[&str], &str)] = &[
+            (&["The cat sat on the", "mat."], "The cat sat on the mat."),
+            (
+                &["I went to the", "store to buy some", "groceries!!"],
+                "I went to the store to buy some groceries!!",
+            ),
+            (&["The cat", "break vase", "?"], "The cat broke the vase?"),
+            (&["Do", "not", "go to", "store"], "Do not go to the store."),
+            (
+                &["Please give", "report", "Alex"],
+                "Please give the report to Alex.",
+            ),
+        ];
+
+        let mut chat = Chat::new();
+
+        // The system prompt explaining the goal
+        chat.set_system_prompt("You are a helpful writing assistant. Your goal is to combine join strings of text end-to-end. \
+                The final string of text should have correct grammar and closely resemble the original input strings.");
+
+        // Add the example concatenations to the chat history
+        for (inputs, output) in EXAMPLE_CONCATENATIONS {
+            chat.add_message(ChatRole::User, inputs.join(" | "));
+            chat.add_message(ChatRole::Model, output);
+        }
+
+        // Give the input strings as a user message, effectively asking the model to concatenate them
+        let input_strings = input_strings
+            .iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        chat.add_message(ChatRole::User, input_strings);
+
+        // Infer the model's response to the concatenation instruction, and return the final response string
+        self.chat(&chat, &ChatRole::Model, false, seed, temp, None, 1.0, 0)
+            .0
+            .complete(&[])
+            .0
+            .trim()
+            .to_string()
     }
 }
 

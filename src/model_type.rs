@@ -47,7 +47,10 @@ impl ModelType {
 
     /// Returns true if this model type supports "thinking" functionality.
     pub fn can_think(&self) -> bool {
-        matches!(self, ModelType::Qwen25Instruct | ModelType::Qwen3(_) | ModelType::Qwen3Vl(_))
+        matches!(
+            self,
+            ModelType::Qwen25Instruct | ModelType::Qwen3(_) | ModelType::Qwen3Vl(_)
+        )
     }
 
     /// Returns true if this model requires the think tag to be present regardless.
@@ -141,9 +144,9 @@ impl ModelType {
             ModelType::Qwen3(_) | ModelType::Qwen3Special | ModelType::Qwen3InstructAbl => {
                 ModelPipeline::Qwen3(Qwen3::new(config.as_qwen3().unwrap(), var).unwrap())
             }
-            ModelType::Qwen3Vl(_) => {
-                ModelPipeline::Qwen3Vl(Box::new(Qwen3Vl::new(config.as_qwen3_vl().unwrap(), var).unwrap()))
-            }
+            ModelType::Qwen3Vl(_) => ModelPipeline::Qwen3Vl(Box::new(
+                Qwen3Vl::new(config.as_qwen3_vl().unwrap(), var).unwrap(),
+            )),
         }
     }
 

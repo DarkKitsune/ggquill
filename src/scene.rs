@@ -148,7 +148,7 @@ impl Display for Scene {
             .join("\n\n");
         write!(
             f,
-            "Cast:\n\n{}\n\n\nACT ONE\n\n{}\n\n{}",
+            "**Cast:**\n\n{}\n\n**ACT ONE**\n\n{}\n\n{}",
             cast_string, self.name, turns_string
         )
     }
@@ -199,8 +199,8 @@ impl SceneTurn {
 impl Display for SceneTurn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SceneTurn::Story(text) => write!(f, "*{}*", text),
-            SceneTurn::Dialogue(actor, text) => write!(f, "**{}**\n\"{}\"", actor, text),
+            SceneTurn::Story(text) => write!(f, "**STORY: {}**", text),
+            SceneTurn::Dialogue(actor, text) => write!(f, "**{}:** \"{}\"", actor, text),
             SceneTurn::Action(actor, action) => write!(f, "*{} {}*", actor, action),
         }
     }
@@ -251,8 +251,8 @@ impl InferredSceneTurn {
     /// Get the begin sequence for this inferred turn.
     pub fn begin_sequence(&self) -> String {
         match self {
-            InferredSceneTurn::Story => "*".to_string(),
-            InferredSceneTurn::Dialogue(actor) => format!("**{}**\n\"", actor),
+            InferredSceneTurn::Story => "**STORY: ".to_string(),
+            InferredSceneTurn::Dialogue(actor) => format!("**{}:** \"", actor),
             InferredSceneTurn::Action(actor) => format!("*Next, {}", actor),
         }
     }
@@ -260,7 +260,7 @@ impl InferredSceneTurn {
     /// Get the end sequences for this inferred turn.
     pub fn end_sequences(&self) -> &[&'static str] {
         match self {
-            InferredSceneTurn::Story => &["*", "\n\n"],
+            InferredSceneTurn::Story => &["**", "\n\n"],
             InferredSceneTurn::Dialogue(_) => &["\"", "\n\n"],
             InferredSceneTurn::Action(_) => &["*", "\n\n"],
         }

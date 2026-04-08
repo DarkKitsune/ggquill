@@ -74,8 +74,7 @@ impl PipelineStep {
 
                 // Response prefix
                 if !response_prefix.is_empty() {
-                    let response_prefix =
-                        substitute_context_keys(response_prefix, context);
+                    let response_prefix = substitute_context_keys(response_prefix, context);
                     chat.set_response_prefix(Some(response_prefix));
                 }
 
@@ -93,7 +92,16 @@ impl PipelineStep {
 
                 // Get the model's response to the chat, stopping when one of the end sequences is generated
                 let response = model
-                    .chat(&chat, &ChatRole::Model, false, *seed, if *temp > 0.0 { Some(*temp) } else { None }, None, 1.1, 64)
+                    .chat(
+                        &chat,
+                        &ChatRole::Model,
+                        false,
+                        *seed,
+                        if *temp > 0.0 { Some(*temp) } else { None },
+                        None,
+                        1.1,
+                        64,
+                    )
                     .0
                     .complete(&end_sequences)
                     .0
@@ -118,7 +126,10 @@ pub struct Pipeline {
 impl Pipeline {
     /// Create a new empty pipeline.
     pub fn new(seed: u64) -> Self {
-        Self { seed, steps: Vec::new() }
+        Self {
+            seed,
+            steps: Vec::new(),
+        }
     }
 
     /// Get the next seed and increment the pipeline's seed for the next step.
@@ -174,10 +185,7 @@ impl Pipeline {
     ) -> &mut Self {
         // Build the system prompt for the summarization step, incorporating the hint if provided
         let system_prompt = if let Some(hint) = hint {
-            format!(
-                "You are a helpful assistant who summarizes text. {}",
-                hint,
-            )
+            format!("You are a helpful assistant who summarizes text. {}", hint,)
         } else {
             "You are a helpful assistant who summarizes long text to make it shorter.".to_string()
         };
@@ -195,7 +203,7 @@ impl Pipeline {
             user_prompt,
             "**Summary:**\n",
             [],
-            0.5
+            0.5,
         );
 
         self
