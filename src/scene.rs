@@ -95,7 +95,7 @@ impl Scene {
         let inferred = self
             .model
             .predict_next(prompt, seed, temp, None, repeat_penalty, repeat_last_n)
-            .complete(turn.end_sequences())
+            .complete(turn.end_sequences(), None)
             .0
             .trim()
             .to_string();
@@ -199,9 +199,9 @@ impl SceneTurn {
 impl Display for SceneTurn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SceneTurn::Story(text) => write!(f, "**STORY: {}**", text),
+            SceneTurn::Story(text) => write!(f, "<{}>", text),
             SceneTurn::Dialogue(actor, text) => write!(f, "**{}:** \"{}\"", actor, text),
-            SceneTurn::Action(actor, action) => write!(f, "*{} {}*", actor, action),
+            SceneTurn::Action(_, action) => write!(f, "*{}*", action),
         }
     }
 }
@@ -235,7 +235,10 @@ impl InferredSceneTurn {
         match self {
             InferredSceneTurn::Story => SceneTurn::Story(text),
             InferredSceneTurn::Dialogue(actor) => SceneTurn::Dialogue(actor, text),
-            InferredSceneTurn::Action(actor) => SceneTurn::Action(actor, text),
+            InferredSceneTurn::Action(actor) => {
+                let text = format!("{} {}", actor, text);
+                SceneTurn::Action(actor, text)
+            }
         }
     }
 
@@ -251,7 +254,7 @@ impl InferredSceneTurn {
     /// Get the begin sequence for this inferred turn.
     pub fn begin_sequence(&self) -> String {
         match self {
-            InferredSceneTurn::Story => "**STORY: ".to_string(),
+            InferredSceneTurn::Story => "<".to_string(),
             InferredSceneTurn::Dialogue(actor) => format!("**{}:** \"", actor),
             InferredSceneTurn::Action(actor) => format!("*Next, {}", actor),
         }
@@ -260,7 +263,7 @@ impl InferredSceneTurn {
     /// Get the end sequences for this inferred turn.
     pub fn end_sequences(&self) -> &[&'static str] {
         match self {
-            InferredSceneTurn::Story => &["**", "\n\n"],
+            InferredSceneTurn::Story => &[">", "\n\n"],
             InferredSceneTurn::Dialogue(_) => &["\"", "\n\n"],
             InferredSceneTurn::Action(_) => &["*", "\n\n"],
         }

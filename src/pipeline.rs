@@ -3,7 +3,7 @@ use std::fmt::Display;
 use aho_corasick::AhoCorasick;
 
 use crate::{
-    chat::{Chat, ChatRole},
+    chat::{Chat, ChatMessage, ChatRole},
     data::{JsonMap, JsonValue},
     model::Model,
 };
@@ -30,10 +30,10 @@ enum PipelineStep {
     Chat {
         output_key: String,
         system_prompt: String,
-        chat_history: Vec<(ChatRole, String)>,
+        chat_history: Vec<ChatMessage>,
         user_prompt: String,
-        response_prefix: String,
         end_sequences: Vec<String>,
+        response_prefix: String,
         seed: u64,
         temp: f64,
     },
@@ -48,35 +48,22 @@ impl PipelineStep {
                 system_prompt,
                 chat_history,
                 user_prompt,
-                response_prefix,
                 end_sequences,
+                response_prefix,
                 seed,
                 temp,
             } => {
-                // Build the chat, substituting any context keys with their values
-                let mut chat = Chat::new();
-
-                // System prompt
-                if !system_prompt.is_empty() {
-                    let system_prompt = substitute_context_keys(system_prompt, context);
-                    chat.set_system_prompt(system_prompt);
-                }
-
-                // Chat history
-                for (role, message) in chat_history {
-                    let message = substitute_context_keys(message, context);
-                    chat.add_message(role.clone(), message);
-                }
-
-                // User prompt
+                // Substitute context keys in the passed strings
+                let system_prompt = substitute_context_keys(system_prompt, context);
                 let user_prompt = substitute_context_keys(user_prompt, context);
-                chat.add_message(ChatRole::User, user_prompt);
-
-                // Response prefix
-                if !response_prefix.is_empty() {
-                    let response_prefix = substitute_context_keys(response_prefix, context);
-                    chat.set_response_prefix(Some(response_prefix));
-                }
+                let chat_history = chat_history
+                    .iter()
+                    .map(|message| {
+                        let content = substitute_context_keys(message.content(), context);
+                        ChatMessage::new(message.sender().clone(), content)
+                    })
+                    .collect::<Vec<ChatMessage>>();
+                let response_prefix = substitute_context_keys(response_prefix, context);
 
                 // Convert end_sequences to a Vec<&str> for the complete method
                 let mut end_sequences = end_sequences
@@ -89,27 +76,20 @@ impl PipelineStep {
                 if !end_sequences.iter().any(|s| s.contains("---")) {
                     end_sequences.push("---");
                 }
+                
+                // Build the chat
+                let mut chat = Chat::new(model, system_prompt, &chat_history, *seed, Some(*temp));
+                chat.push_message(ChatMessage::new(ChatRole::User, user_prompt));
 
-                // Get the model's response to the chat, stopping when one of the end sequences is generated
-                let response = model
-                    .chat(
-                        &chat,
-                        &ChatRole::Model,
-                        false,
-                        *seed,
-                        if *temp > 0.0 { Some(*temp) } else { None },
-                        None,
-                        1.1,
-                        64,
-                    )
-                    .0
-                    .complete(&end_sequences)
-                    .0
-                    .trim()
-                    .to_string();
+                // Infer the model's response with the provided end sequences and response prefix
+                let response = chat.infer_message(
+                    &ChatRole::Model,
+                    &end_sequences,
+                    Some(response_prefix),
+                );
 
                 // Store the response in the context under output_key
-                context.insert(output_key.clone(), JsonValue::String(response));
+                context.insert(output_key.clone(), JsonValue::String(response.to_string()));
             }
         }
     }
@@ -144,18 +124,14 @@ impl Pipeline {
         &mut self,
         output_key: impl Display,
         system_prompt: impl Display,
-        chat_history: impl Into<Vec<(ChatRole, String)>>,
+        chat_history: impl Into<Vec<ChatMessage>>,
         user_prompt: impl Display,
         response_prefix: impl Display,
         end_sequences: impl Into<Vec<String>>,
         temp: f64,
     ) -> &mut Self {
         let seed = self.next_seed();
-        let chat_history = chat_history
-            .into()
-            .into_iter()
-            .map(|(role, message)| (role, message.to_string()))
-            .collect::<Vec<(ChatRole, String)>>();
+        let chat_history = chat_history.into();
 
         self.steps.push(PipelineStep::Chat {
             output_key: output_key.to_string(),

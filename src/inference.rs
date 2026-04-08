@@ -16,7 +16,7 @@ pub struct InferIter {
     logits_processor: LogitsProcessor,
     repeat_penalty: f32,
     repeat_last_n: usize,
-    eos_tokens: (u32, u32),
+    eos_token: u32,
     reached_eos: bool,
 }
 
@@ -30,7 +30,7 @@ impl InferIter {
         logits_processor: LogitsProcessor,
         repeat_penalty: f32,
         repeat_last_n: usize,
-        eos_tokens: (u32, u32),
+        eos_token: u32,
     ) -> Self {
         Self {
             model_type,
@@ -42,7 +42,7 @@ impl InferIter {
             logits_processor,
             repeat_penalty,
             repeat_last_n,
-            eos_tokens,
+            eos_token,
             reached_eos: false,
         }
     }
@@ -107,7 +107,7 @@ impl InferIter {
         self.step += 1;
 
         // If the token is not the end of text token, add it to the tokens
-        if next_token != self.eos_tokens.0 && next_token != self.eos_tokens.1 {
+        if next_token != self.eos_token {
             self.tokens.push_token(next_token);
         }
         // Otherwise, set reached_eos to true and return None
@@ -122,11 +122,13 @@ impl InferIter {
 
     /// Run the iterator until completion or until one of `end_sequences` is generated
     /// and return everything up to that point as a `String`, as well as the end sequence that was reached
-    pub fn complete<'a>(mut self, end_sequences: &'a [&str]) -> (String, Option<&'a str>) {
+    pub fn complete<'a>(&mut self, end_sequences: &'a [&str], prefix: Option<&str>) -> (String, Option<&'a str>) {
         let mut response = String::new();
-        while let Some(token) = self.next_token(None)
+        let mut prefix = prefix;
+        while let Some(token) = self.next_token(prefix)
             && token < self.vocab_size as u32 - 1
         {
+            prefix = None;
             let token_str = self.tokens.model.detokenize([token]);
 
             response.push_str(&token_str);
@@ -141,12 +143,9 @@ impl InferIter {
 
             if let Some((idx, pos)) = found_stop_sequence_position {
                 response.truncate(pos);
-                self.reached_eos = true;
                 return (response, Some(end_sequences[idx]));
             }
         }
-
-        self.reached_eos = true;
 
         (response, None)
     }
@@ -154,6 +153,7 @@ impl InferIter {
     /// Force inference of a single value or idea following the current context and an optional prefix.
     /// This is useful for parsing a single value from the model, such as a number or a name, without
     /// consuming the entire response.
+    /// Inserts the prefix into the context.
     pub fn next_value(&mut self, prefix: Option<&str>) -> String {
         // Insert the prefix and "**" before the first token to force the model to generate a useful value.
         // Run the iterator until we get "**" back, returning everything in between as a string.
@@ -210,8 +210,8 @@ impl InferIter {
 }
 
 impl Into<String> for InferIter {
-    fn into(self) -> String {
-        self.complete(&[]).0
+    fn into(mut self) -> String {
+        self.complete(&[], None).0
     }
 }
 

@@ -1,8 +1,11 @@
 use std::fmt::Display;
 
 use crate::model::Model;
-use crate::prelude::JsonMap;
+use crate::prelude::{InferIter, ModelType};
 
+/* Old implementation of Chat which created a new InferIter on every inference.
+This is unnecessarily complex and inefficient when we can simply store and reuse the same
+InferIter after the first inference.
 /// Represents a chat between user and model.
 #[derive(Clone, Debug)]
 pub struct Chat {
@@ -205,6 +208,100 @@ impl<'a> IntoIterator for &'a Chat {
     fn into_iter(self) -> Self::IntoIter {
         self.messages.iter()
     }
+}
+*/
+
+/// Represents a chat between user and model.
+pub struct Chat {
+    model_type: ModelType,
+    infer_iter: InferIter,
+    /// The messages in the chat. This should be synchronized with the context of the infer_iter.
+    chat_history: Vec<ChatMessage>,
+    /// Accumulated message texts that have not been inserted into the context via prefix yet.
+    message_buffer: String,
+}
+
+impl Chat {
+    /// Creates a new chat.
+    pub fn new(
+        model: &Model,
+        system_prompt: impl AsRef<str>,
+        chat_history: &[ChatMessage],
+        seed: u64,
+        temperature: Option<f64>,
+    ) -> Self {
+        // Create the initial context for the chat using the model's prompt template and tokenize it
+        let full_prompt =
+            model.model_type().create_chat_prompt(
+            system_prompt,
+            chat_history,
+            None,
+        );
+        let initial_context = model.tokenize(full_prompt);
+
+        // Create the InferIter for the chat with the initial context
+        let infer_iter = model.infer_iter(
+            initial_context,
+            seed,
+            Some(temperature.unwrap_or(0.65)),
+            None,
+            1.1,
+            64,
+        ).unwrap();
+
+        Self {
+            model_type: model.model_type(),
+            infer_iter,
+            chat_history: chat_history.to_vec(),
+            message_buffer: String::new(),
+        }
+    }
+
+    /// Push an existing message to the chat history.
+    pub fn push_message(&mut self, message: ChatMessage) {
+        // First add the complete message prompt to the message buffer
+        self.message_buffer.push_str(&self.model_type.create_chat_message_begin_prompt(message.sender()));
+        self.message_buffer.push_str(message.content());
+        self.message_buffer.push('\n');
+        self.message_buffer.push_str(&self.model_type.create_chat_message_end_prompt());
+
+        // Then push the message to the chat history
+        self.chat_history.push(message);
+    }
+
+    /// Infer a new message from the model and push it to the chat history.
+    /// If a prefix is provided, it is treated as if it was prepended to the model's response, influencing the inference.
+    /// The prefix is not included in the final chat message, however.
+    pub fn infer_message(
+        &mut self,
+        sender: &ChatRole,
+        end_sequences: &[&str],
+        prefix: Option<String>,
+    ) -> &str {
+        // First add the beginning of the message prompt to the message buffer
+        self.message_buffer.push_str(&self.model_type.create_chat_message_begin_prompt(sender));
+
+        // If prefix is Some, add it to the message buffer as well
+        if let Some(prefix) = prefix {
+            self.message_buffer.push_str(&prefix);
+        }
+
+        // Build end sequences
+        let mut full_end_sequences = vec![self.model_type.chat_message_end_sequence()];
+        full_end_sequences.extend_from_slice(end_sequences);
+
+        // Then infer the response from the model, using the message buffer as the insert_before to inject new messages first
+        let response = self.infer_iter.complete(&full_end_sequences, Some(&self.message_buffer)).0;
+        // Reset the message buffer to just the end message prompt
+        self.message_buffer = self.model_type.create_chat_message_end_prompt();
+
+        // Add the inferred response to the chat history as a new message
+        let message = ChatMessage::new(sender.clone(), response);
+        self.chat_history.push(message);
+        self.chat_history.last().unwrap().content()
+    }
+
+
 }
 
 /// Represents a single message in a chat.

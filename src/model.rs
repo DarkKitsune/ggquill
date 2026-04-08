@@ -13,13 +13,13 @@ use hf_hub::api::sync::Api;
 use serde_json::Map;
 use tokenizers::Tokenizer;
 
-use crate::chat::{Chat, ChatRole};
 use crate::data::JsonValue;
 use crate::inference::InferIter;
 use crate::model_type::ModelType;
 use crate::token_string::{IntoTokenString, TokenString};
 
 pub const MAX_TOKENS: usize = 32768;
+pub const THINK_TEMP_MULTIPLIER: f64 = 0.85;
 
 #[derive(Clone)]
 pub struct Model {
@@ -79,8 +79,8 @@ impl Model {
         })
     }
 
-    pub fn model_type(&self) -> &ModelType {
-        &self.model_type
+    pub fn model_type(&self) -> ModelType {
+        self.model_type
     }
 
     pub fn seed(&self) -> u64 {
@@ -159,10 +159,7 @@ impl Model {
         let logits_processor = LogitsProcessor::new(seed, temp, top_p);
 
         // Get the end of text token
-        let eos_tokens = (
-            self.get_token("<|im_end|>").unwrap(),
-            self.get_token("<|endoftext|>").unwrap(),
-        );
+        let eos_token = self.get_token("<|endoftext|>").unwrap();
 
         // Create the iterator
         Ok(InferIter::new(
@@ -174,97 +171,8 @@ impl Model {
             logits_processor,
             repeat_penalty,
             repeat_last_n,
-            eos_tokens,
+            eos_token,
         ))
-    }
-
-    /// Generate a response message based on the chat history.
-    /// Returns an iterator over the generated response, and if thinking,
-    /// then also returns the thoughts as a string.
-    pub fn chat(
-        &self,
-        chat: &Chat,
-        sender: &ChatRole,
-        think: bool,
-        seed: u64,
-        temp: Option<f64>,
-        top_p: Option<f64>,
-        repeat_penalty: f32,
-        repeat_last_n: usize,
-    ) -> (InferIter, Option<String>) {
-        const THINK_TEMP_MULTIPLIER: f64 = 0.85;
-
-        // Panic if the model type does not support chat
-        if !self.model_type.can_chat() {
-            panic!("Model type {:?} does not support chat", self.model_type);
-        }
-
-        // If thinking, reduce the temperature a bit
-        let temp = if think {
-            temp.map(|t| t * THINK_TEMP_MULTIPLIER)
-        } else {
-            temp
-        };
-
-        // Create the basic chat prompt
-        let mut prompt = self.model_type.create_chat_prompt(chat, sender, think);
-
-        // If thinking then infer the contents of the think block and close it with </think>
-        let mut thoughts = None;
-        if think && self.model_type.can_think() {
-            // First, infer the contents of the think block and store the result in `thoughts`
-            thoughts = Some(
-                self.infer_iter(&prompt, seed, temp, top_p, repeat_penalty, repeat_last_n)
-                    .unwrap()
-                    .complete(&["</think>"])
-                    .0,
-            );
-
-            // Then append the thoughts to the prompt and close the think block
-            prompt.push_str(thoughts.as_ref().unwrap());
-            prompt.push_str("</think>");
-        }
-
-        // If we have a response prefix then append said prefix
-        if let Some(prefix) = chat.response_prefix() {
-            // Append the response prefix to the prompt
-            prompt.push_str(prefix);
-        }
-
-        // Return the iterator over the generated response, as well as the thoughts (if any)
-        (
-            self.infer_iter(prompt, seed, temp, top_p, repeat_penalty, repeat_last_n)
-                .unwrap(),
-            thoughts,
-        )
-    }
-
-    /// Instruct the model to do something, or generate/analyze text.
-    /// Returns an iterator over the model's response to the instruction, and if thinking,
-    /// then also returns the thoughts as a string.
-    pub fn instruct(
-        &self,
-        instruction: impl Display,
-        think: bool,
-        seed: u64,
-        temp: Option<f64>,
-        top_p: Option<f64>,
-        repeat_penalty: f32,
-        repeat_last_n: usize,
-    ) -> (InferIter, Option<String>) {
-        // Give the model the instruction as a chat message
-        let mut chat = Chat::new();
-        chat.add_message(ChatRole::User, instruction.to_string());
-        self.chat(
-            &chat,
-            &ChatRole::Model,
-            think,
-            seed,
-            temp,
-            top_p,
-            repeat_penalty,
-            repeat_last_n,
-        )
     }
 
     /// Execute a pipeline on the model, returning the final context as an output JSON map.
@@ -288,52 +196,6 @@ impl Model {
     ) -> InferIter {
         self.infer_iter(prompt, seed, temp, top_p, repeat_penalty, repeat_last_n)
             .unwrap()
-    }
-
-    /// Join several strings together using the model to fill in the gaps, returning the final string.
-    /// Internally, the | character is used to separate the input strings, and is not removed from input_strings.
-    pub fn join(&self, input_strings: &[impl AsRef<str>], seed: u64, temp: Option<f64>) -> String {
-        const EXAMPLE_CONCATENATIONS: &[(&[&str], &str)] = &[
-            (&["The cat sat on the", "mat."], "The cat sat on the mat."),
-            (
-                &["I went to the", "store to buy some", "groceries!!"],
-                "I went to the store to buy some groceries!!",
-            ),
-            (&["The cat", "break vase", "?"], "The cat broke the vase?"),
-            (&["Do", "not", "go to", "store"], "Do not go to the store."),
-            (
-                &["Please give", "report", "Alex"],
-                "Please give the report to Alex.",
-            ),
-        ];
-
-        let mut chat = Chat::new();
-
-        // The system prompt explaining the goal
-        chat.set_system_prompt("You are a helpful writing assistant. Your goal is to combine join strings of text end-to-end. \
-                The final string of text should have correct grammar and closely resemble the original input strings.");
-
-        // Add the example concatenations to the chat history
-        for (inputs, output) in EXAMPLE_CONCATENATIONS {
-            chat.add_message(ChatRole::User, inputs.join(" | "));
-            chat.add_message(ChatRole::Model, output);
-        }
-
-        // Give the input strings as a user message, effectively asking the model to concatenate them
-        let input_strings = input_strings
-            .iter()
-            .map(|s| s.as_ref())
-            .collect::<Vec<_>>()
-            .join(" | ");
-        chat.add_message(ChatRole::User, input_strings);
-
-        // Infer the model's response to the concatenation instruction, and return the final response string
-        self.chat(&chat, &ChatRole::Model, false, seed, temp, None, 1.0, 0)
-            .0
-            .complete(&[])
-            .0
-            .trim()
-            .to_string()
     }
 }
 

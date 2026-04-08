@@ -8,7 +8,8 @@ use candle_transformers::models::qwen3::ModelForCausalLM as Qwen3;
 use candle_transformers::models::qwen3_vl::Qwen3VLModel as Qwen3Vl;
 use hf_hub::api::sync::Api;
 
-use crate::chat::{Chat, ChatRole};
+use crate::chat::{ChatMessage, ChatRole};
+use crate::data::JsonMap;
 use crate::model::{DynConfig, ModelPipeline};
 
 /// Represents the size of model to use.
@@ -171,47 +172,14 @@ impl ModelType {
     }
 
     /// Creates a chat prompt meant for this type of Phi model.
-    pub fn create_chat_prompt(&self, chat: &Chat, sender: &ChatRole, think: bool) -> String {
-        let mut prompt = self.create_chatml_instruct_chat_prompt(
-            chat,
-            sender,
-            self.can_think() && think && self.use_think_in_prompt(),
-        );
-
-        // Think block
-        if self.can_think() {
-            // If we need to think then start the think block
-            if think || self.must_think() {
-                prompt.push_str("<think>\n");
-            }
-            // The the model requires thinking but we're not thinking this time, close the think block
-            if self.must_think() && !think {
-                prompt.push_str("\n</think>\n");
-            }
-        }
-
-        prompt
-    }
-
-    fn create_chatml_instruct_chat_prompt(
-        &self,
-        chat: &Chat,
-        sender: &ChatRole,
-        use_think: bool,
-    ) -> String {
+    pub fn create_chat_prompt(&self, chat_system_prompt: impl AsRef<str>, chat_history: &[ChatMessage], extra_data: Option<&JsonMap>) -> String {
         let mut prompt = String::new();
 
         // Add the system prompt to the system section
-        prompt.push_str(&format!("<|im_start|>system\n{}\n", chat.system_prompt(),));
-
-        // Add the long term memory to the system section
-        if let Some(long_term_memory) = chat.long_term_memory() {
-            prompt.push_str(long_term_memory);
-            prompt.push('\n');
-        }
+        prompt.push_str(&format!("<|im_start|>system\n{}\n", chat_system_prompt.as_ref()));
 
         // Add extra data as key-value pairs for the model to understand
-        if let Some(extra_data) = chat.extra_data() {
+        if let Some(extra_data) = extra_data {
             prompt.push_str(&format!(
                 "<notes>\n{}\n</notes>\n",
                 serde_json::to_string_pretty(extra_data).unwrap()
@@ -222,35 +190,17 @@ impl ModelType {
         prompt.push_str("<|im_end|>\n");
 
         // Add each message in the chat to the prompt as a new section
-        let chat_messages = chat.messages();
-        for (i, message) in chat_messages.iter().enumerate() {
+        for message in chat_history {
             match message.sender() {
                 ChatRole::User => {
                     prompt.push_str(&format!(
-                        "<|im_start|>user\n{}{}\n<|im_end|>\n",
-                        // If this is the last message and use_think is true, add /think before the content
-                        if i == chat_messages.len() - 1 && use_think {
-                            "/think "
-                        } else {
-                            // Otherwise, use /no_think instead if necessary
-                            if self.use_think_in_prompt() {
-                                "/no_think "
-                            } else {
-                                ""
-                            }
-                        },
+                        "<|im_start|>user\n{}\n<|im_end|>\n",
                         message.content()
                     ));
                 }
                 ChatRole::Model => {
                     prompt.push_str(&format!(
-                        "<|im_start|>assistant\n{}{}\n<|im_end|>\n",
-                        // If this model must think, add an empty think block
-                        if self.must_think() {
-                            "<think>\n\n\n</think>\n"
-                        } else {
-                            ""
-                        },
+                        "<|im_start|>assistant\n{}\n<|im_end|>\n",
                         message.content()
                     ));
                 }
@@ -264,12 +214,24 @@ impl ModelType {
             }
         }
 
-        // Start the final assistant section (response)
-        prompt.push_str("<|im_start|>");
-        prompt.push_str(self.chat_role_name(sender));
-        prompt.push('\n');
-
         prompt
+    }
+
+    pub fn create_chat_message_begin_prompt(
+        &self,
+        sender: &ChatRole,
+    ) -> String {
+        format!("<|im_start|>{}\n", self.chat_role_name(sender))
+    }
+
+    pub fn create_chat_message_end_prompt(
+        &self,
+    ) -> String {
+        "<|im_end|>\n".to_string()
+    }
+
+    pub fn chat_message_end_sequence(&self) -> &'static str {
+        "<|im_end|>"
     }
 
     pub fn chat_role_name<'a>(&self, role: &'a ChatRole) -> &'a str {
