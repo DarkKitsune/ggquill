@@ -8,6 +8,7 @@ pub mod pipeline;
 pub mod prelude;
 pub mod scene;
 pub mod token_string;
+pub mod joiner;
 
 #[cfg(test)]
 mod tests {
@@ -94,6 +95,8 @@ mod tests {
             std::io::stdout().flush().unwrap();
             std::io::stdin().read_line(&mut input).unwrap();
             let input = input.trim().to_string();
+
+            // Push the user message to the chat history
             chat.push_message(ChatMessage::new(ChatRole::User, input));
 
             // Infer a model response
@@ -126,6 +129,29 @@ mod tests {
             "Predicted character bio:\nName: Jessie\nAge: 19\nClass: Archer\nWeapon: {}\nClothing: {}\nHometown: {}",
             weapon, clothing, hometown
         );
+    }
+
+    #[test]
+    fn joiner() {
+        const SEED: u64 = 24680;
+        const TEMP: f64 = 0.45;
+        const ITEMS_TO_JOIN: &[&[&str]] = &[
+            &["the cat", "sat on", "the mat"],
+            &["jack saw", "red roses", "beautiful sunset"],
+            &["the quick", "brown fox", "jumps over", "the lazy dog."],
+            &["The ingredients for the recipe are", "flour", "sugar", "eggs", "milk", "butter", "."],
+        ];
+
+        // Create the model
+        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+
+        // Create a joiner
+        let mut joiner = Joiner::new(&model, SEED, Some(TEMP));
+
+        for items in ITEMS_TO_JOIN {
+            let result = joiner.join(items);
+            println!("Joining {:?} -> {}", items, result);
+        }
     }
 
     #[test]

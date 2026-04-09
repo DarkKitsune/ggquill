@@ -1,4 +1,5 @@
 pub use crate::actor::Actor;
+pub use crate::joiner::Joiner;
 pub use crate::chat::{Chat, ChatMessage, ChatRole};
 pub use crate::data::{JsonMap, JsonValue};
 pub use crate::inference::InferIter;

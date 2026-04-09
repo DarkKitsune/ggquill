@@ -74,6 +74,7 @@ impl Chat {
         end_sequences: &[&str],
         prefix: Option<String>,
     ) -> &str {
+        // TODO: Recreate the InferIter if chat tokens get too big to fit in the context window!!!
         // First add the beginning of the message prompt to the message buffer
         self.message_buffer
             .push_str(&self.model_type.create_chat_message_begin_prompt(sender));
@@ -100,6 +101,17 @@ impl Chat {
         self.chat_history.push(message);
         self.chat_history.last().unwrap().content()
     }
+
+    /// Get the latest message in the chat history, if any.
+    pub fn latest_message(&self) -> Option<&ChatMessage> {
+        self.chat_history.last()
+    }
+
+    /// Consume the chat and return the final message content, if any.
+    pub fn result(mut self) -> Option<String> {
+        // Move out just the last message then return its content
+        self.chat_history.pop().map(|msg| msg.into_content())
+    }
 }
 
 /// Represents a single message in a chat.
@@ -111,8 +123,8 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     /// Creates a new chat message.
-    pub fn new(sender: ChatRole, content: String) -> Self {
-        Self { sender, content }
+    pub fn new(sender: ChatRole, content: impl Display) -> Self {
+        Self { sender, content: content.to_string() }
     }
 
     /// Returns the sender of the message.
@@ -123,6 +135,11 @@ impl ChatMessage {
     /// Returns the content of the message.
     pub fn content(&self) -> &str {
         &self.content
+    }
+
+    /// Consumes the message and returns its content.
+    pub fn into_content(self) -> String {
+        self.content
     }
 }
 
