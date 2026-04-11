@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::model::Model;
-use crate::prelude::{InferIter, ModelType};
+use crate::prelude::{InferIter, InferParams, ModelType};
 
 /// Represents a chat between user and model.
 pub struct Chat {
@@ -14,11 +14,10 @@ pub struct Chat {
 impl Chat {
     /// Creates a new chat.
     pub fn new(
-        model: &Model,
+        model: &mut Model,
         system_prompt: impl AsRef<str>,
         chat_history: &[ChatMessage],
-        seed: u64,
-        temperature: Option<f64>,
+        infer_params: &InferParams,
     ) -> Self {
         // Create the initial context for the chat using the model's prompt template and tokenize it
         let full_prompt = model
@@ -30,11 +29,7 @@ impl Chat {
         let infer_iter = model
             .infer_iter(
                 initial_context,
-                seed,
-                Some(temperature.unwrap_or(0.65)),
-                None,
-                1.1,
-                64,
+                infer_params,
             )
             .unwrap();
 

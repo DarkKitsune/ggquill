@@ -10,7 +10,7 @@ pub struct Joiner {
 
 impl Joiner {
     /// Creates a new Joiner with the provided model, seed, and temperature.
-    pub fn new(model: &Model, seed: u64, temperature: Option<f64>) -> Self {
+    pub fn new(model: &mut Model) -> Self {
         let example_chat_history = [
             ChatMessage::new(ChatRole::User, "an apple | orange | banana"),
             ChatMessage::new(ChatRole::Model, "\"an apple, an orange, and a banana\""),
@@ -27,8 +27,7 @@ impl Joiner {
             formatted and grammatically correct string in double quotes which incorporates all of the input \
             values. Do not add extra symbols or punctuation other than that which is in the input.",
             &example_chat_history,
-            seed,
-            Some(temperature.unwrap_or(0.45)),
+            &InferParams::new_balanced(),
         );
         Self { chat }
     }

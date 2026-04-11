@@ -2,10 +2,75 @@ use candle_core::{Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
 
 use crate::{
-    model::ModelPipeline,
+    model::{Model, ModelPipeline},
     prelude::{IntoTokenString, ModelType, TokenString},
 };
 
+/// Parameters for inference. This is used to configure the inference process, such as the repeat penalty.
+#[derive(Debug, Clone)]
+pub struct InferParams {
+    /// The temperature to apply to the logits. 0.0 results in deterministic sampling, while ~0.7 is creative.
+    pub temperature: f64,
+    /// The repeat penalty to apply to the logits.
+    /// 1.0 means no penalty, while values > 1.0 penalize repeated tokens and values < 1.0 encourage them.
+    pub repeat_penalty: f32,
+    /// The number of last tokens to apply the repeat penalty to.
+    /// 0 means no repeat penalty will be applied.
+    pub repeat_scan_length: usize,
+}
+
+impl InferParams {
+    /// Returns a new InferParams with basic creative parameters set.
+    /// This is good for general conversation and creative tasks.
+    pub fn new_creative() -> Self {
+        Self {
+            temperature: 0.75,
+            repeat_penalty: 1.1,
+            repeat_scan_length: 72,
+        }
+    }
+    
+    /// Returns a new InferParams with basic parameters set for balanced output.
+    /// This is good for general use and is a good starting point for most tasks.
+    pub fn new_balanced() -> Self {
+        Self {
+            temperature: 0.6,
+            repeat_penalty: 1.05,
+            repeat_scan_length: 36,
+        }
+    }
+    
+    /// Returns a new InferParams with basic parameters set for logical, near-deterministic output.
+    /// This is good for tasks like parsing, extracting information, or code generation.
+    pub fn new_logical() -> Self {
+        Self {
+            temperature: 0.25,
+            repeat_penalty: 1.0,
+            repeat_scan_length: 0,
+        }
+    }
+
+    /// Returns a new InferParams with basic parameters set for deterministic output.
+    pub fn new_deterministic() -> Self {
+        Self {
+            temperature: 0.0,
+            repeat_penalty: 1.0,
+            repeat_scan_length: 0,
+        }
+    }
+}
+
+impl Default for InferParams {
+    fn default() -> Self {
+        Self {
+            temperature: 0.7,
+            repeat_penalty: 1.05,
+            repeat_scan_length: 64,
+        }
+    }
+}
+
+/// An iterator that can be used to infer tokens from a model.
 pub struct InferIter {
     model_type: ModelType,
     device: Device,
@@ -14,7 +79,7 @@ pub struct InferIter {
     pipeline: ModelPipeline,
     logits_processor: LogitsProcessor,
     repeat_penalty: f32,
-    repeat_last_n: usize,
+    repeat_scan_length: usize,
     eos_token: u32,
     reached_eos: bool,
     insert_before: String,
@@ -23,26 +88,24 @@ pub struct InferIter {
 
 impl InferIter {
     pub(crate) fn new(
-        model_type: ModelType,
+        model: &Model,
         device: Device,
         tokens: TokenString,
         vocab_size: usize,
         pipeline: ModelPipeline,
         logits_processor: LogitsProcessor,
-        repeat_penalty: f32,
-        repeat_last_n: usize,
-        eos_token: u32,
+        params: &InferParams,
     ) -> Self {
         Self {
-            model_type,
+            model_type: model.model_type(),
             device,
             tokens,
             vocab_size,
             pipeline,
             logits_processor,
-            repeat_penalty,
-            repeat_last_n,
-            eos_token,
+            repeat_penalty: params.repeat_penalty,
+            repeat_scan_length: params.repeat_scan_length,
+            eos_token: model.eos_token(),
             reached_eos: false,
             insert_before: String::new(),
             step: 0,
@@ -94,11 +157,11 @@ impl InferIter {
         let logits = self.model_type.process_logits(logits);
 
         // Apply the repeat penalty
-        let logits = if self.repeat_penalty == 1.0 || self.repeat_last_n == 0 {
+        let logits = if self.repeat_penalty == 1.0 || self.repeat_scan_length == 0 {
             logits
         } else {
-            // Apply the repeat penalty to the last repeat_last_n tokens
-            let start_at = self.tokens.len().saturating_sub(self.repeat_last_n);
+            // Apply the repeat penalty to the last repeat_scan_length tokens
+            let start_at = self.tokens.len().saturating_sub(self.repeat_scan_length);
             candle_transformers::utils::apply_repeat_penalty(
                 &logits,
                 self.repeat_penalty,

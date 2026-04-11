@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use anyhow::Result;
 
-use crate::{actor::Actor, model::Model};
+use crate::{actor::Actor, model::Model, prelude::InferParams};
 
 /// Represents a scene as part of a story or event, made up of actors and turns.
 pub struct Scene {
@@ -72,10 +72,7 @@ impl Scene {
     pub fn infer_next_turn(
         &mut self,
         turn: InferredSceneTurn,
-        seed: u64,
-        temp: Option<f64>,
-        repeat_penalty: f32,
-        repeat_last_n: usize,
+        params: &InferParams,
     ) -> Result<&SceneTurn> {
         // Bail if the actor for this turn does not exist in the scene
         if let Some(actor_name) = turn.actor_name()
@@ -94,7 +91,7 @@ impl Scene {
         // Infer until one of the end sequences for this inferred turn is found
         let inferred = self
             .model
-            .predict_next(prompt, seed, temp, None, repeat_penalty, repeat_last_n)
+            .predict_next(prompt, params)
             .complete(turn.end_sequences())
             .0
             .trim()

@@ -72,20 +72,18 @@ mod tests {
     #[test]
     fn chat() {
         const SEED: u64 = 477474;
-        const TEMP: f64 = 0.65;
         const CONVERSATION_TURNS: usize = 14;
 
         // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
         // Start a chat
         let mut chat = Chat::new(
-            &model,
+            &mut model,
             "You are a helpful assistant and friendly person who has a great imagination, \
             an open mind, and is fun to talk to. Talk to the user in a friendly and engaging manner.",
             &[],
-            SEED,
-            Some(TEMP),
+            &InferParams::new_creative()
         );
 
         // Infer a conversation
@@ -110,18 +108,13 @@ mod tests {
     #[test]
     fn predict_chain() {
         const SEED: u64 = 13579;
-        const TEMP: f64 = 0.5;
 
         // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
         let mut prediction = model.predict_next(
             "Here is my character bio:\nName: Jessie\nAge: 19\nClass: Archer",
-            SEED,
-            Some(TEMP),
-            None,
-            1.1,
-            64,
+            &InferParams::new_creative(),
         );
         prediction.push_str("\nWeapon: ");
         let weapon = prediction.next_value();
@@ -138,7 +131,6 @@ mod tests {
     #[test]
     fn joiner() {
         const SEED: u64 = 24680;
-        const TEMP: f64 = 0.45;
         const ITEMS_TO_JOIN: &[&[&str]] = &[
             &["the cat", "sat on", "the mat"],
             &["jack saw", "red roses", "beautiful sunset"],
@@ -147,10 +139,10 @@ mod tests {
         ];
 
         // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
         // Create a joiner
-        let mut joiner = Joiner::new(&model, SEED, Some(TEMP));
+        let mut joiner = Joiner::new(&mut model);
 
         for items in ITEMS_TO_JOIN {
             let result = joiner.join(items);
@@ -161,10 +153,9 @@ mod tests {
     #[test]
     fn generate_story() {
         const SEED: u64 = 547845;
-        const TEMP: f64 = 0.6;
 
         // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
         // Generate a story
         let mut story = "There was once".to_string();
@@ -172,11 +163,7 @@ mod tests {
             &model
                 .predict_next(
                     "long_story = \"There was once",
-                    SEED,
-                    Some(TEMP),
-                    None,
-                    1.1,
-                    64,
+                    &InferParams::new_creative(),
                 )
                 .complete(&["\""])
                 .0,
@@ -187,7 +174,6 @@ mod tests {
     #[test]
     fn scene() {
         const SEED: u64 = 12345;
-        const TEMP: f64 = 0.6;
         const STORY_CYCLES: usize = 5;
 
         // Create the model
@@ -222,28 +208,24 @@ mod tests {
             ))
             .unwrap();
 
+        // Infer scene turns
+        let infer_params = InferParams::new_creative();
         for _ in 0..STORY_CYCLES {
             scene
-                .infer_next_turn(InferredSceneTurn::story(), SEED, Some(TEMP), 1.1, 64)
+                .infer_next_turn(InferredSceneTurn::story(), &infer_params)
                 .unwrap();
 
             scene
                 .infer_next_turn(
                     InferredSceneTurn::action("Alice".to_string()),
-                    SEED,
-                    Some(TEMP),
-                    1.1,
-                    64,
+                    &infer_params,
                 )
                 .unwrap();
 
             scene
                 .infer_next_turn(
                     InferredSceneTurn::dialogue("Bob".to_string()),
-                    SEED,
-                    Some(TEMP),
-                    1.1,
-                    64,
+                    &infer_params,
                 )
                 .unwrap();
 
