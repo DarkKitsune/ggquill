@@ -4,16 +4,13 @@ use anyhow::{Error as E, Result};
 
 use candle_transformers::models::qwen2::{Config as Qwen2Config, ModelForCausalLM as Qwen2};
 use candle_transformers::models::qwen3::{Config as Qwen3Config, ModelForCausalLM as Qwen3};
-use candle_transformers::models::qwen3_vl::{Config as Qwen3VlConfig, Qwen3VLModel as Qwen3Vl};
 
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::generation::LogitsProcessor;
 use hf_hub::api::sync::Api;
-use serde_json::Map;
 use tokenizers::Tokenizer;
 
-use crate::data::JsonValue;
 use crate::inference::InferIter;
 use crate::model_type::ModelType;
 use crate::token_string::{IntoTokenString, TokenString};
@@ -175,15 +172,6 @@ impl Model {
         ))
     }
 
-    /// Execute a pipeline on the model, returning the final context as an output JSON map.
-    pub fn execute_pipeline(
-        &self,
-        pipeline: &crate::pipeline::Pipeline,
-        input: impl Into<Map<String, JsonValue>>,
-    ) -> Map<String, JsonValue> {
-        pipeline.execute(self, input)
-    }
-
     /// Predict the text which follows the given prompt.
     pub fn predict_next(
         &self,
@@ -203,27 +191,22 @@ impl Model {
 pub enum ModelPipeline {
     Qwen2(Qwen2),
     Qwen3(Qwen3),
-    Qwen3Vl(Box<Qwen3Vl>),
 }
 
 impl ModelPipeline {
-    pub fn forward(&mut self, xs: &Tensor, start_pos: usize, seq_len: usize) -> Tensor {
+    /// Forward the given input through the model pipeline and return the output logits.
+    pub fn forward(&mut self, xs: &Tensor, start_pos: usize, _seq_len: usize) -> Tensor {
         match self {
             ModelPipeline::Qwen2(qwen2) => qwen2.forward(xs, start_pos).unwrap(),
             ModelPipeline::Qwen3(qwen3) => qwen3.forward(xs, start_pos).unwrap(),
-            ModelPipeline::Qwen3Vl(qwen3_vl) => qwen3_vl
-                .forward(
-                    xs,
-                    None,
-                    None,
-                    None,
-                    None,
-                    vec![seq_len],
-                    vec![],
-                    vec![],
-                    &[start_pos],
-                )
-                .unwrap(),
+        }
+    }
+
+    /// Reset the pipeline's KV cache. Should be called between different inference runs.
+    pub fn reset_cache(&mut self) {
+        match self {
+            ModelPipeline::Qwen2(qwen2) => qwen2.clear_kv_cache(),
+            ModelPipeline::Qwen3(qwen3) => qwen3.clear_kv_cache(),
         }
     }
 }
@@ -233,7 +216,6 @@ impl ModelPipeline {
 pub enum DynConfig {
     Qwen2(Qwen2Config),
     Qwen3(Qwen3Config),
-    Qwen3Vl(Qwen3VlConfig),
 }
 
 impl DynConfig {
@@ -247,12 +229,6 @@ impl DynConfig {
     pub fn as_qwen3(&self) -> Option<&Qwen3Config> {
         match self {
             DynConfig::Qwen3(config) => Some(config),
-            _ => None,
-        }
-    }
-    pub fn as_qwen3_vl(&self) -> Option<&Qwen3VlConfig> {
-        match self {
-            DynConfig::Qwen3Vl(config) => Some(config),
             _ => None,
         }
     }

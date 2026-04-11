@@ -5,7 +5,6 @@ use candle_core::{DType, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::qwen2::ModelForCausalLM as Qwen2;
 use candle_transformers::models::qwen3::ModelForCausalLM as Qwen3;
-use candle_transformers::models::qwen3_vl::Qwen3VLModel as Qwen3Vl;
 use hf_hub::api::sync::Api;
 
 use crate::chat::{ChatMessage, ChatRole};
@@ -31,7 +30,6 @@ pub enum ModelType {
     Qwen3(ModelSize),
     Qwen3InstructAbl,
     Qwen3Special,
-    Qwen3Vl(ModelSize),
 }
 
 impl ModelType {
@@ -41,8 +39,7 @@ impl ModelType {
             ModelType::Qwen25Instruct
             | ModelType::Qwen3(_)
             | ModelType::Qwen3InstructAbl
-            | ModelType::Qwen3Special
-            | ModelType::Qwen3Vl(_) => true,
+            | ModelType::Qwen3Special => true,
         }
     }
 
@@ -50,18 +47,18 @@ impl ModelType {
     pub fn can_think(&self) -> bool {
         matches!(
             self,
-            ModelType::Qwen25Instruct | ModelType::Qwen3(_) | ModelType::Qwen3Vl(_)
+            ModelType::Qwen25Instruct | ModelType::Qwen3(_)
         )
     }
 
     /// Returns true if this model requires the think tag to be present regardless.
     pub fn must_think(&self) -> bool {
-        matches!(self, ModelType::Qwen3(_) | ModelType::Qwen3Vl(_))
+        matches!(self, ModelType::Qwen3(_))
     }
 
     /// Returns true if this model needs "/think " in the prompt to enable thinking.
     pub fn use_think_in_prompt(&self) -> bool {
-        matches!(self, ModelType::Qwen3(_) | ModelType::Qwen3Vl(_))
+        matches!(self, ModelType::Qwen3(_))
     }
 
     pub fn model_repo(&self) -> ModelRepo {
@@ -72,7 +69,6 @@ impl ModelType {
                 ModelSize::Medium => ModelRepo::hub("Qwen/Qwen3-4B"),
                 ModelSize::Large => ModelRepo::hub("Qwen/Qwen3-8B"),
             },
-            ModelType::Qwen3Vl(_) => ModelRepo::hub("Qwen/Qwen3-VL-2B-Instruct"),
             ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
             ModelType::Qwen3InstructAbl => {
                 ModelRepo::hub("Goekdeniz-Guelmez/Josiefied-Qwen3-4B-abliterated-v2")
@@ -129,10 +125,6 @@ impl ModelType {
                 let config = serde_json::from_str(&config).unwrap();
                 DynConfig::Qwen3(config)
             }
-            ModelType::Qwen3Vl(_) => {
-                let config = serde_json::from_str(&config).unwrap();
-                DynConfig::Qwen3Vl(config)
-            }
         }
     }
 
@@ -145,9 +137,6 @@ impl ModelType {
             ModelType::Qwen3(_) | ModelType::Qwen3Special | ModelType::Qwen3InstructAbl => {
                 ModelPipeline::Qwen3(Qwen3::new(config.as_qwen3().unwrap(), var).unwrap())
             }
-            ModelType::Qwen3Vl(_) => ModelPipeline::Qwen3Vl(Box::new(
-                Qwen3Vl::new(config.as_qwen3_vl().unwrap(), var).unwrap(),
-            )),
         }
     }
 
@@ -157,8 +146,7 @@ impl ModelType {
             ModelType::Qwen25Instruct
             | ModelType::Qwen3(_)
             | ModelType::Qwen3Special
-            | ModelType::Qwen3InstructAbl
-            | ModelType::Qwen3Vl(_) => {
+            | ModelType::Qwen3InstructAbl => {
                 // Process logits for Qwen3 model
                 logits
                     .squeeze(0)
@@ -179,6 +167,11 @@ impl ModelType {
         extra_data: Option<&JsonMap>,
     ) -> String {
         let mut prompt = String::new();
+
+        // For now we just panic if thinking is required
+        if self.must_think() {
+            unimplemented!("ModelType::create_chat_prompt does not yet support models that require thinking")
+        }
 
         // Add the system prompt to the system section
         prompt.push_str(&format!(

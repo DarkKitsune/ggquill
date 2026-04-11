@@ -3,7 +3,7 @@ use candle_transformers::generation::LogitsProcessor;
 
 use crate::{
     model::ModelPipeline,
-    prelude::{ModelType, TokenString},
+    prelude::{IntoTokenString, ModelType, TokenString},
 };
 
 pub struct InferIter {
@@ -11,13 +11,14 @@ pub struct InferIter {
     device: Device,
     tokens: TokenString,
     vocab_size: usize,
-    step: usize,
     pipeline: ModelPipeline,
     logits_processor: LogitsProcessor,
     repeat_penalty: f32,
     repeat_last_n: usize,
     eos_token: u32,
     reached_eos: bool,
+    insert_before: String,
+    step: usize,
 }
 
 impl InferIter {
@@ -37,29 +38,36 @@ impl InferIter {
             device,
             tokens,
             vocab_size,
-            step: 0,
             pipeline,
             logits_processor,
             repeat_penalty,
             repeat_last_n,
             eos_token,
             reached_eos: false,
+            insert_before: String::new(),
+            step: 0,
         }
+    }
+    
+    /// Push some text into the context.
+    pub fn push_str(&mut self, text: impl AsRef<str>) {
+        self.insert_before.push_str(text.as_ref());
     }
 
     /// Infer the next token, optionally inserting some text first to influence the inference.
     /// Returns None if the end of text token is reached.
-    pub fn next_token(&mut self, insert_before: Option<&str>) -> Option<u32> {
+    pub fn next_token(&mut self) -> Option<u32> {
         // Exit early if we already got the end of text token
         if self.reached_eos {
             return None;
         }
 
-        // Insert the insert_before onto self.tokens if insert_before is Some
+        // Insert the self.insert_before onto self.tokens if insert_before is not empty
         // Also get the size of the inserted text in tokens to calculate the context correctly
-        let context_add = if let Some(insert_before_text) = insert_before {
+        let context_add = if !self.insert_before.is_empty() {
             let old_len = self.tokens.len();
-            self.tokens.push_str(insert_before_text);
+            self.tokens.push_str(&self.insert_before);
+            self.insert_before.clear();
             self.tokens.len() - old_len
         } else {
             0
@@ -125,14 +133,11 @@ impl InferIter {
     pub fn complete<'a>(
         &mut self,
         end_sequences: &'a [&str],
-        prefix: Option<&str>,
     ) -> (String, Option<&'a str>) {
         let mut response = String::new();
-        let mut prefix = prefix;
-        while let Some(token) = self.next_token(prefix)
+        while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1
         {
-            prefix = None;
             let token_str = self.tokens.model.detokenize([token]);
 
             response.push_str(&token_str);
@@ -158,16 +163,14 @@ impl InferIter {
     /// This is useful for parsing a single value from the model, such as a number or a name, without
     /// consuming the entire response.
     /// Inserts the prefix into the context.
-    pub fn next_value(&mut self, prefix: Option<&str>) -> String {
+    pub fn next_value(&mut self) -> String {
         // Insert the prefix and "**" before the first token to force the model to generate a useful value.
         // Run the iterator until we get "**" back, returning everything in between as a string.
+        self.push_str("**");
         let mut response = String::new();
-        let insert_before_string = format!("{}**", prefix.unwrap_or(""));
-        let mut insert_before = Some(insert_before_string.as_str());
-        while let Some(token) = self.next_token(insert_before)
+        while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1
         {
-            insert_before = None;
             let token_str = self.tokens.model.detokenize([token]);
 
             response.push_str(&token_str);
@@ -186,7 +189,7 @@ impl InferIter {
         let mut bracket_count = 0;
         let mut in_string = false;
         let mut escaped_last = false;
-        while let Some(token) = self.next_token(None) {
+        while let Some(token) = self.next_token() {
             let token_str = self.tokens.model.detokenize([token]);
             for c in token_str.chars() {
                 if c == '\\' && !escaped_last {
@@ -211,11 +214,36 @@ impl InferIter {
         }
         response
     }
+
+    /// Completely reset the context, starting the iterator over again with the given tokens as the new context.
+    pub fn reset(&mut self, new_context: impl IntoTokenString) {
+        let new_tokens = self.tokens.model.tokenize(new_context);
+        self.tokens = new_tokens;
+        self.reached_eos = false;
+        self.insert_before.clear();
+        self.step = 0;
+        self.pipeline.reset_cache();
+    }
+
+    /// Get the context which was last used for inference. This does not include any text that has been pushed into the context
+    /// via `push_str` since the last inference.
+    pub fn last_context(&self) -> &TokenString {
+        &self.tokens
+    }
+
+    /// Get the full context including any text that has been pushed into the context via `push_str` since the last inference.
+    pub fn full_context(&self) -> String {
+        let mut context = self.tokens.to_string();
+        if !self.insert_before.is_empty() {
+            context.push_str(&self.insert_before);
+        }
+        context
+    }
 }
 
-impl Into<String> for InferIter {
-    fn into(mut self) -> String {
-        self.complete(&[], None).0
+impl From<InferIter> for String {
+    fn from(mut infer_iter: InferIter) -> Self {
+        infer_iter.complete(&[]).0
     }
 }
 
@@ -223,6 +251,6 @@ impl Iterator for InferIter {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token(None)
+        self.next_token()
     }
 }

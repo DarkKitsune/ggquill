@@ -9,8 +9,6 @@ pub struct Chat {
     infer_iter: InferIter,
     /// The messages in the chat. This should be synchronized with the context of the infer_iter.
     chat_history: Vec<ChatMessage>,
-    /// Accumulated message texts that have not been inserted into the context via prefix yet.
-    message_buffer: String,
 }
 
 impl Chat {
@@ -44,22 +42,21 @@ impl Chat {
             model_type: model.model_type(),
             infer_iter,
             chat_history: chat_history.to_vec(),
-            message_buffer: String::new(),
         }
     }
 
     /// Push an existing message to the chat history.
     pub fn push_message(&mut self, message: ChatMessage) {
         // First add the complete message prompt to the message buffer
-        self.message_buffer.push_str(
-            &self
+        self.infer_iter.push_str(
+             self
                 .model_type
                 .create_chat_message_begin_prompt(message.sender()),
         );
-        self.message_buffer.push_str(message.content());
-        self.message_buffer.push('\n');
-        self.message_buffer
-            .push_str(&self.model_type.create_chat_message_end_prompt());
+        self.infer_iter.push_str(message.content());
+        self.infer_iter.push_str("\n");
+        self.infer_iter
+            .push_str(self.model_type.create_chat_message_end_prompt());
 
         // Then push the message to the chat history
         self.chat_history.push(message);
@@ -74,14 +71,14 @@ impl Chat {
         end_sequences: &[&str],
         prefix: Option<String>,
     ) -> &str {
-        // TODO: Recreate the InferIter if chat tokens get too big to fit in the context window!!!
+        // TODO: Compress and recreate the InferIter if chat tokens get too big to fit in the context window!!!
         // First add the beginning of the message prompt to the message buffer
-        self.message_buffer
-            .push_str(&self.model_type.create_chat_message_begin_prompt(sender));
+        self.infer_iter
+            .push_str(self.model_type.create_chat_message_begin_prompt(sender));
 
         // If prefix is Some, add it to the message buffer as well
         if let Some(prefix) = prefix {
-            self.message_buffer.push_str(&prefix);
+            self.infer_iter.push_str(&prefix);
         }
 
         // Build end sequences
@@ -91,10 +88,10 @@ impl Chat {
         // Then infer the response from the model, using the message buffer as the insert_before to inject new messages first
         let response = self
             .infer_iter
-            .complete(&full_end_sequences, Some(&self.message_buffer))
+            .complete(&full_end_sequences)
             .0;
         // Reset the message buffer to just the end message prompt
-        self.message_buffer = self.model_type.create_chat_message_end_prompt();
+        self.infer_iter.push_str(self.model_type.create_chat_message_end_prompt());
 
         // Add the inferred response to the chat history as a new message
         let message = ChatMessage::new(sender.clone(), response);
@@ -102,13 +99,13 @@ impl Chat {
         self.chat_history.last().unwrap().content()
     }
 
-    /// Get the latest message in the chat history, if any.
-    pub fn latest_message(&self) -> Option<&ChatMessage> {
+    /// Get the last message in the chat history, if any.
+    pub fn last(&self) -> Option<&ChatMessage> {
         self.chat_history.last()
     }
 
-    /// Consume the chat and return the final message content, if any.
-    pub fn result(mut self) -> Option<String> {
+    /// Consume the chat and return the last message's content, if any.
+    pub fn into_last(mut self) -> Option<String> {
         // Move out just the last message then return its content
         self.chat_history.pop().map(|msg| msg.into_content())
     }

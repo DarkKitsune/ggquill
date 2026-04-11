@@ -95,7 +95,7 @@ impl Scene {
         let inferred = self
             .model
             .predict_next(prompt, seed, temp, None, repeat_penalty, repeat_last_n)
-            .complete(turn.end_sequences(), None)
+            .complete(turn.end_sequences())
             .0
             .trim()
             .to_string();
