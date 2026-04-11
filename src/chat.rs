@@ -40,6 +40,17 @@ impl Chat {
         }
     }
 
+    /// Resets the chat using a given system prompt and chat history.
+    pub fn reset(&mut self, system_prompt: impl AsRef<str>, chat_history: Vec<ChatMessage>) {
+        // Create the initial context for the chat using the model's prompt template and tokenize it
+        let full_prompt = self.model_type.create_chat_prompt(system_prompt, &chat_history, None);
+        let initial_context = self.infer_iter.last_context().model.tokenize(full_prompt);
+
+        // Reset the InferIter for the chat with the new initial context
+        self.infer_iter.reset(initial_context);
+        self.chat_history = chat_history;
+    }
+
     /// Push an existing message to the chat history.
     pub fn push_message(&mut self, message: ChatMessage) {
         // First add the complete message prompt to the message buffer
@@ -88,7 +99,7 @@ impl Chat {
         self.infer_iter.push_str(self.model_type.create_chat_message_end_prompt());
 
         // Add the inferred response to the chat history as a new message
-        let message = ChatMessage::new(sender.clone(), response.trim());
+        let message = ChatMessage::new(sender.clone(), response.unwrap());
         self.chat_history.push(message);
         self.chat_history.last().unwrap().content()
     }

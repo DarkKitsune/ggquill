@@ -16,58 +16,50 @@ mod tests {
 
     use crate::prelude::*;
 
-    /*
+    
     #[test]
     fn pipeline() {
         const SEED: u64 = 46364;
-        const TEMP: f64 = 0.65;
         const POEM_THEMES: &[&str] = &[
             "a magical adventure in a fantasy world",
             "the beauty of nature in spring",
             "breaking free from constraints and embracing freedom",
         ];
 
-        // Create a new pipeline
-        let mut pipeline = Pipeline::new(SEED);
+        // Create the model and pipeline
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut pipeline = Pipeline::new(&mut model);
 
-        // Add a chat step to the pipeline which generates a poem based on the theme in {theme}
+        // Add an instruct step to the pipeline which generates a poem based on the theme in {theme}
         // And store the generated poem in the context under {poem}
-        pipeline.chat(
+        pipeline.instruct(
             "poem",
-            "You are a creative and imaginative writer who writes rhyming poems based on themes. \
-                Use descriptive and engaging language but not too many long or obscure words. \
-                Make sure the poem rhymes and has a nice flow.",
-            [],
-            "Write a rhyming poem based on the following theme: {theme}",
-            "Certainly, here is the poem:\n\n\"",
-            ["\"".to_string()],
-            TEMP,
+            "Write a short rhyming poem based on the following theme: {theme}",
+            Some("Here is the poem:\n".to_string()),
+            vec![],
         );
 
         // Add a step to the pipeline which summarizes the poem in {poem} and stores the summary in the context under {summary}
         pipeline.summarize(
             "summary",
-            "poem",
-            Some("The summary must be a poem too.".to_string()),
+            "{poem}",
+            "The summary must be a poem too.",
         );
-
-        // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
         // Execute the pipeline on the model for each poem theme and print the poem and summary outputs
         for theme in POEM_THEMES {
-            let input = json_map! {
+            let mut context = json_map! {
                 "theme" => theme,
             };
-            let output = model.execute_pipeline(&pipeline, input);
-            let poem = output["poem"].as_str().unwrap();
-            let summary = output["summary"].as_str().unwrap();
+            pipeline.execute(&mut context);
+            let poem = context["poem"].as_str().unwrap();
+            let summary = context["summary"].as_str().unwrap();
             println!(
                 "Theme: {}\n\nGenerated poem:\n{}\n\n\n\nSummarized version:\n{}\n\n\n\n------\n\n\n",
                 theme, poem, summary
             );
         }
-    }*/
+    }
 
     #[test]
     fn chat() {

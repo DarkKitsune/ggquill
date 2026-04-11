@@ -332,8 +332,8 @@ impl InferIter {
     }
 
     /// Get the full context including any text that has been pushed into the context via `push_str` since the last inference.
-    pub fn full_context(&self) -> String {
-        let mut context = self.tokens.to_string();
+    pub fn full_context(&self) -> TokenString {
+        let mut context = self.tokens.clone();
         if !self.insert_before.is_empty() {
             context.push_str(&self.insert_before);
         }

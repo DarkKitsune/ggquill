@@ -6,7 +6,7 @@ pub use crate::inference::{InferIter, InferParams};
 pub use crate::json_map;
 pub use crate::model::Model;
 pub use crate::model_type::{ModelSize, ModelType};
-//pub use crate::pipeline::Pipeline;
+pub use crate::pipeline::Pipeline;
 pub use crate::scene::{InferredSceneTurn, Scene, SceneTurn};
 pub use crate::token_string::{IntoTokenString, TokenString};
 pub use serde_json::json;
