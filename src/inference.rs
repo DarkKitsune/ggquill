@@ -54,8 +54,7 @@ impl InferIter {
         self.insert_before.push_str(text.as_ref());
     }
 
-    /// Infer the next token, optionally inserting some text first to influence the inference.
-    /// Returns None if the end of text token is reached.
+    /// Infer the next token. Returns None if the end of text token is reached.
     pub fn next_token(&mut self) -> Option<u32> {
         // Exit early if we already got the end of text token
         if self.reached_eos {
@@ -159,10 +158,9 @@ impl InferIter {
         (response, None)
     }
 
-    /// Force inference of a single value or idea following the current context and an optional prefix.
+    /// Force inference of a single value or idea following the current context.
     /// This is useful for parsing a single value from the model, such as a number or a name, without
     /// consuming the entire response.
-    /// Inserts the prefix into the context.
     pub fn next_value(&mut self) -> String {
         // Insert the prefix and "**" before the first token to force the model to generate a useful value.
         // Run the iterator until we get "**" back, returning everything in between as a string.
