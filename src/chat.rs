@@ -58,22 +58,21 @@ impl Chat {
     }
 
     /// Infer a new message from the model and push it to the chat history.
-    /// If a prefix is provided, it is treated as if it was prepended to the model's response, influencing the inference.
-    /// The prefix is not included in the final chat message, however.
+    /// If a begin_sequence is provided, it is treated as if it was prepended to the model's response, influencing the inference.
     pub fn infer_message(
         &mut self,
         sender: &ChatRole,
+        begin_sequence: Option<&str>,
         end_sequences: &[&str],
-        prefix: Option<String>,
     ) -> &str {
         // TODO: Compress and recreate the InferIter if chat tokens get too big to fit in the context window!!!
-        // First add the beginning of the message prompt to the message buffer
+        // First add the beginning of the message prompt to the context
         self.infer_iter
             .push_str(self.model_type.create_chat_message_begin_prompt(sender));
 
-        // If prefix is Some, add it to the message buffer as well
-        if let Some(prefix) = prefix {
-            self.infer_iter.push_str(&prefix);
+        // If begin_sequence is Some, add it to the message buffer as well
+        if let Some(begin_sequence) = begin_sequence {
+            self.infer_iter.push_str(begin_sequence);
         }
 
         // Build end sequences
@@ -83,13 +82,13 @@ impl Chat {
         // Then infer the response from the model, using the message buffer as the insert_before to inject new messages first
         let response = self
             .infer_iter
-            .complete(&full_end_sequences)
-            .0;
+            .complete(&full_end_sequences);
+
         // Reset the message buffer to just the end message prompt
         self.infer_iter.push_str(self.model_type.create_chat_message_end_prompt());
 
         // Add the inferred response to the chat history as a new message
-        let message = ChatMessage::new(sender.clone(), response);
+        let message = ChatMessage::new(sender.clone(), response.trim());
         self.chat_history.push(message);
         self.chat_history.last().unwrap().content()
     }

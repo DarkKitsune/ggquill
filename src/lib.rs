@@ -99,7 +99,7 @@ mod tests {
             chat.push_message(ChatMessage::new(ChatRole::User, input));
 
             // Infer a model response
-            let message = chat.infer_message(&ChatRole::Model, &[], None);
+            let message = chat.infer_message(&ChatRole::Model, None, &[]);
 
             println!("\nAssistant: {}\n", message);
         }
@@ -114,7 +114,7 @@ mod tests {
 
         let mut prediction = model.predict_next(
             "Here is my character bio:\nName: Jessie\nAge: 19\nClass: Archer",
-            &InferParams::new_creative(),
+            &InferParams::new_balanced(),
         );
         prediction.push_str("\nWeapon: ");
         let weapon = prediction.next_value();
@@ -166,7 +166,7 @@ mod tests {
                     &InferParams::new_creative(),
                 )
                 .complete(&["\""])
-                .0,
+                .unwrap(),
         );
         println!("Generated story:\n{}", story);
     }

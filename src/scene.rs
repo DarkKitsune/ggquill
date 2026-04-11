@@ -93,7 +93,6 @@ impl Scene {
             .model
             .predict_next(prompt, params)
             .complete(turn.end_sequences())
-            .0
             .trim()
             .to_string();
 

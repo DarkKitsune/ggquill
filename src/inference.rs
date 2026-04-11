@@ -24,7 +24,7 @@ impl InferParams {
     /// This is good for general conversation and creative tasks.
     pub fn new_creative() -> Self {
         Self {
-            temperature: 0.75,
+            temperature: 0.7,
             repeat_penalty: 1.1,
             repeat_scan_length: 72,
         }
@@ -34,7 +34,7 @@ impl InferParams {
     /// This is good for general use and is a good starting point for most tasks.
     pub fn new_balanced() -> Self {
         Self {
-            temperature: 0.6,
+            temperature: 0.55,
             repeat_penalty: 1.05,
             repeat_scan_length: 36,
         }
@@ -67,6 +67,37 @@ impl Default for InferParams {
             repeat_penalty: 1.05,
             repeat_scan_length: 64,
         }
+    }
+}
+
+/// A single result from InferIter::complete.
+/// Provides the completed text as well as the end sequence that was reached, if any.
+pub struct InferCompletion<'a> {
+    /// The completed text from the inference process.
+    text: String,
+    /// The end sequence that was reached, if any. This is useful for determining why the inference process stopped.
+    end_sequence: Option<&'a str>,
+}
+
+impl InferCompletion<'_> {
+    /// Unwrap the completion, returning the completed text.
+    pub fn unwrap(self) -> String {
+        self.text
+    }
+
+    /// Get the end sequence that was reached, if any.
+    pub fn end_sequence(&self) -> Option<&str> {
+        self.end_sequence
+    }
+
+    /// Get the complete result as it was generated.
+    pub fn result(&self) -> &str {
+        &self.text
+    }
+
+    /// Get the complete result trimmed of leading and trailing whitespace.
+    pub fn trim(&self) -> &str {
+        self.text.trim()
     }
 }
 
@@ -117,7 +148,7 @@ impl InferIter {
         self.insert_before.push_str(text.as_ref());
     }
 
-    /// Infer the next token. Returns None if the end of text token is reached.
+    /// Infer the next token. Returns None if we have reached the end of the response (EOS token).
     pub fn next_token(&mut self) -> Option<u32> {
         // Exit early if we already got the end of text token
         if self.reached_eos {
@@ -195,7 +226,7 @@ impl InferIter {
     pub fn complete<'a>(
         &mut self,
         end_sequences: &'a [&str],
-    ) -> (String, Option<&'a str>) {
+    ) -> InferCompletion<'a> {
         let mut response = String::new();
         while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1
@@ -214,16 +245,24 @@ impl InferIter {
 
             if let Some((idx, pos)) = found_stop_sequence_position {
                 response.truncate(pos);
-                return (response, Some(end_sequences[idx]));
+                return InferCompletion {
+                    text: response,
+                    end_sequence: Some(end_sequences[idx]),
+                };
             }
         }
 
-        (response, None)
+        InferCompletion {
+            text: response,
+            end_sequence: None,
+        }
     }
 
     /// Force inference of a single value or idea following the current context.
     /// This is useful for parsing a single value from the model, such as a number or a name, without
     /// consuming the entire response.
+    /// Currently, this is implemented using "**" on both sides of the value, which may cause the model
+    /// to pay special attention to the value.
     pub fn next_value(&mut self) -> String {
         // Insert the prefix and "**" before the first token to force the model to generate a useful value.
         // Run the iterator until we get "**" back, returning everything in between as a string.
@@ -304,7 +343,7 @@ impl InferIter {
 
 impl From<InferIter> for String {
     fn from(mut infer_iter: InferIter) -> Self {
-        infer_iter.complete(&[]).0
+        infer_iter.complete(&[]).unwrap()
     }
 }
 

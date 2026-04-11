@@ -164,7 +164,7 @@ impl Model {
 
         // Create logits processor
         // We use a small amount of top_p to prevent the model from generating extremely unlikely tokens
-        let logits_processor = LogitsProcessor::new(self.next_seed(), Some(params.temperature), Some(0.9));
+        let logits_processor = LogitsProcessor::new(self.next_seed(), Some(params.temperature), Some(0.85));
 
         // Create the iterator
         Ok(InferIter::new(
