@@ -1,4 +1,4 @@
-use std::{fmt::Display, slice::SliceIndex};
+use std::{cell::RefCell, fmt::Display, slice::SliceIndex};
 
 use crate::model::Model;
 
@@ -6,19 +6,19 @@ use crate::model::Model;
 #[derive(Clone)]
 pub struct TokenString {
     pub tokens: Vec<u32>,
-    pub model: Model,
+    pub model: RefCell<Model>,
 }
 
 impl TokenString {
     /// Create a new TokenString from a list of tokens and a model
-    pub(crate) fn new(tokens: Vec<u32>, model: Model) -> Self {
+    pub(crate) fn new(tokens: Vec<u32>, model: RefCell<Model>) -> Self {
         Self { tokens, model }
     }
 
     /// Push any type that can be converted into a token string
     pub fn push(&mut self, other: impl IntoTokenString) {
         self.tokens
-            .extend(other.into_token_string(&self.model).tokens);
+            .extend(other.into_token_string(&self.model.borrow()).tokens);
     }
 
     /// Push a single token
@@ -38,7 +38,8 @@ impl TokenString {
 
     /// Encode a type that implements `Display` into tokens and push them
     pub fn push_str(&mut self, text: impl Display) {
-        self.extend(self.model.tokenize_str(text));
+        let tokens = self.model.borrow_mut().tokenize_str(text);
+        self.extend(tokens);
     }
 
     /// Truncate the token string to a maximum number of tokens
@@ -98,13 +99,13 @@ impl From<TokenString> for Vec<u32> {
 
 impl From<TokenString> for String {
     fn from(token_string: TokenString) -> Self {
-        token_string.model.detokenize(&token_string.tokens)
+        token_string.model.borrow().detokenize(&token_string.tokens)
     }
 }
 
 impl Display for TokenString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.model.detokenize(&self.tokens))
+        write!(f, "{}", self.model.borrow().detokenize(&self.tokens))
     }
 }
 

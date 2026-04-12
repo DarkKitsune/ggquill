@@ -7,7 +7,7 @@ pub type JsonValue = Value;
 macro_rules! json_map {
     ($($key:expr => $value:expr),* $(,)?) => {
         {
-            let mut map = JsonMap::new();
+            let mut map = $crate::prelude::JsonMap::new();
             $(
                 map.insert($key.to_string(), serde_json::json!($value));
             )*

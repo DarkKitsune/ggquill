@@ -87,7 +87,8 @@ mod tests {
             "You are a helpful assistant and friendly person who has a great imagination, \
             an open mind, and is fun to talk to. Talk to the user in a friendly and engaging manner.",
             &[],
-            &InferParams::new_creative()
+            &InferParams::new_creative(),
+            None,
         );
 
         // Infer a conversation
@@ -103,9 +104,9 @@ mod tests {
             chat.push_message(ChatMessage::new(ChatRole::User, input));
 
             // Infer a model response
-            let message = chat.infer_message(&ChatRole::Model, None, &[]);
+            let message = chat.infer_message(&ChatRole::Assistant, None, &[]);
 
-            println!("\nAssistant: {}\n", message);
+            println!("\n\n\nAssistant: {}\n\n\n", message);
         }
     }
 
@@ -140,6 +141,9 @@ mod tests {
             &["jack saw", "red roses", "beautiful sunset"],
             &["the quick", "brown fox", "jumps over", "the lazy dog."],
             &["The ingredients for the recipe are", "flour", "sugar", "eggs", "milk", "butter", "."],
+            &["To get to", "a park", "go", "straight", "two blocks", "turn left", "on right", "."],
+            &["The weather today is", "sunny", "with a high of 75 degrees", "and a low of 55 degrees", "."],
+            &["func", "test(", "foo: number", ") {", "return foo * 2;", "}"],
         ];
 
         // Create the model
@@ -150,7 +154,7 @@ mod tests {
 
         for items in ITEMS_TO_JOIN {
             let result = joiner.join(items);
-            println!("Joining {:?} -> {}", items, result);
+            println!("{:?}\n{}\n\n", items, result);
         }
     }
 

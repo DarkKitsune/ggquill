@@ -103,49 +103,47 @@ impl InferCompletion<'_> {
 
 /// An iterator that can be used to infer tokens from a model.
 pub struct InferIter {
-    model_type: ModelType,
+    model: Model,
     device: Device,
     tokens: TokenString,
     vocab_size: usize,
-    pipeline: ModelPipeline,
     logits_processor: LogitsProcessor,
     repeat_penalty: f32,
     repeat_scan_length: usize,
     eos_token: u32,
     reached_eos: bool,
-    insert_before: String,
+    pending_context: String,
     step: usize,
 }
 
 impl InferIter {
     pub(crate) fn new(
-        model: &Model,
+        model: Model,
         device: Device,
         tokens: TokenString,
         vocab_size: usize,
-        pipeline: ModelPipeline,
         logits_processor: LogitsProcessor,
         params: &InferParams,
     ) -> Self {
+        let eos_token = model.eos_token();
         Self {
-            model_type: model.model_type(),
+            model,
             device,
             tokens,
             vocab_size,
-            pipeline,
             logits_processor,
             repeat_penalty: params.repeat_penalty,
             repeat_scan_length: params.repeat_scan_length,
-            eos_token: model.eos_token(),
+            eos_token,
             reached_eos: false,
-            insert_before: String::new(),
+            pending_context: String::new(),
             step: 0,
         }
     }
     
     /// Push some text into the context.
     pub fn push_str(&mut self, text: impl AsRef<str>) {
-        self.insert_before.push_str(text.as_ref());
+        self.pending_context.push_str(text.as_ref());
     }
 
     /// Infer the next token. Returns None if we have reached the end of the response (EOS token).
@@ -155,12 +153,12 @@ impl InferIter {
             return None;
         }
 
-        // Insert the self.insert_before onto self.tokens if insert_before is not empty
+        // Insert the pending context onto self.tokens if it is not empty
         // Also get the size of the inserted text in tokens to calculate the context correctly
-        let context_add = if !self.insert_before.is_empty() {
+        let context_add = if !self.pending_context.is_empty() {
             let old_len = self.tokens.len();
-            self.tokens.push_str(&self.insert_before);
-            self.insert_before.clear();
+            self.tokens.push_str(&self.pending_context);
+            self.pending_context.clear();
             self.tokens.len() - old_len
         } else {
             0
@@ -182,10 +180,10 @@ impl InferIter {
             .unwrap();
 
         // Forward the input through the pipeline
-        let logits = self.pipeline.forward(&input, start_pos, context.len());
+        let logits = self.model.forward(&input, start_pos, context.len());
 
         // Preprocess the logits for this model type
-        let logits = self.model_type.process_logits(logits);
+        let logits = self.model.model_type().process_logits(logits);
 
         // Apply the repeat penalty
         let logits = if self.repeat_penalty == 1.0 || self.repeat_scan_length == 0 {
@@ -231,7 +229,7 @@ impl InferIter {
         while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1
         {
-            let token_str = self.tokens.model.detokenize([token]);
+            let token_str = self.tokens.model.borrow().detokenize([token]);
 
             response.push_str(&token_str);
 
@@ -264,14 +262,14 @@ impl InferIter {
     /// Currently, this is implemented using "**" on both sides of the value, which may cause the model
     /// to pay special attention to the value.
     pub fn next_value(&mut self) -> String {
-        // Insert the prefix and "**" before the first token to force the model to generate a useful value.
+        // Insert the "**" before the first token to force the model to generate a useful value.
         // Run the iterator until we get "**" back, returning everything in between as a string.
         self.push_str("**");
         let mut response = String::new();
         while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1
         {
-            let token_str = self.tokens.model.detokenize([token]);
+            let token_str = self.tokens.model.borrow().detokenize([token]);
 
             response.push_str(&token_str);
 
@@ -290,7 +288,7 @@ impl InferIter {
         let mut in_string = false;
         let mut escaped_last = false;
         while let Some(token) = self.next_token() {
-            let token_str = self.tokens.model.detokenize([token]);
+            let token_str = self.tokens.model.borrow().detokenize([token]);
             for c in token_str.chars() {
                 if c == '\\' && !escaped_last {
                     escaped_last = true;
@@ -317,12 +315,12 @@ impl InferIter {
 
     /// Completely reset the context, starting the iterator over again with the given tokens as the new context.
     pub fn reset(&mut self, new_context: impl IntoTokenString) {
-        let new_tokens = self.tokens.model.tokenize(new_context);
+        let new_tokens = self.tokens.model.borrow().tokenize(new_context);
         self.tokens = new_tokens;
         self.reached_eos = false;
-        self.insert_before.clear();
+        self.pending_context.clear();
         self.step = 0;
-        self.pipeline.reset_cache();
+        self.model.clear_cache();
     }
 
     /// Get the context which was last used for inference. This does not include any text that has been pushed into the context
@@ -334,10 +332,16 @@ impl InferIter {
     /// Get the full context including any text that has been pushed into the context via `push_str` since the last inference.
     pub fn full_context(&self) -> TokenString {
         let mut context = self.tokens.clone();
-        if !self.insert_before.is_empty() {
-            context.push_str(&self.insert_before);
+        if !self.pending_context.is_empty() {
+            context.push_str(&self.pending_context);
         }
         context
+    }
+
+    /// Get the text that has been pushed into the context via `push_str` since the last inference,
+    /// and which has not yet been included in any inference context.
+    pub(crate) fn pending_context(&self) -> &str {
+        &self.pending_context
     }
 }
 

@@ -199,7 +199,7 @@ impl ModelType {
                         message.content()
                     ));
                 }
-                ChatRole::Model => {
+                ChatRole::Assistant => {
                     prompt.push_str(&format!(
                         "<|im_start|>assistant\n{}\n<|im_end|>\n",
                         message.content()
@@ -232,7 +232,7 @@ impl ModelType {
 
     pub fn chat_role_name<'a>(&self, role: &'a ChatRole) -> &'a str {
         match role {
-            ChatRole::Model => "assistant",
+            ChatRole::Assistant => "assistant",
             ChatRole::User => "user",
             ChatRole::Other(name) => name,
         }

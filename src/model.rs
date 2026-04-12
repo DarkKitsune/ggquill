@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 
 use anyhow::{Error as E, Result};
@@ -22,8 +23,7 @@ pub const THINK_TEMP_MULTIPLIER: f64 = 0.85;
 #[derive(Clone)]
 pub struct Model {
     model_type: ModelType,
-    config: DynConfig,
-    vb: VarBuilder<'static>,
+    pipeline: ModelPipeline,
     tokenizer: Tokenizer,
     vocab_size: usize,
     device: Device,
@@ -62,6 +62,10 @@ impl Model {
 
         // Create VarBuilder
         let vb = unsafe { VarBuilder::from_mmaped_safetensors(&model_filenames, dtype, &device)? };
+        
+        // Create pipeline
+        let pipeline = model_type
+            .create_pipeline(&config, vb);
 
         // Create tokenizer
         let tokenizer = Tokenizer::from_file(tokenizer_filename).map_err(E::msg)?;
@@ -72,14 +76,18 @@ impl Model {
 
         Ok(Self {
             model_type,
-            config,
-            vb,
+            pipeline,
             tokenizer,
             device: device.clone(),
             vocab_size,
             seed,
             eos_token,
         })
+    }
+
+    /// Forwards the given input tokens through the model and returns the output logits.
+    pub fn forward(&mut self, xs: &Tensor, start_pos: usize, seq_len: usize) -> Tensor {
+        self.pipeline.forward(xs, start_pos, seq_len)
     }
 
     pub fn model_type(&self) -> ModelType {
@@ -99,7 +107,9 @@ impl Model {
     }
 
     pub fn new_token_string(&self) -> TokenString {
-        TokenString::new(Vec::new(), self.clone())
+        let mut cloned_self = self.clone();
+        cloned_self.clear_cache();
+        TokenString::new(Vec::new(), RefCell::new(cloned_self))
     }
 
     pub fn tokenize_str(&self, text: impl Display) -> TokenString {
@@ -108,7 +118,10 @@ impl Model {
 
         // Get the token ids
         let token_ids = tokens.get_ids().to_vec();
-        TokenString::new(token_ids, self.clone())
+        
+        let mut cloned_self = self.clone();
+        cloned_self.clear_cache();
+        TokenString::new(token_ids, RefCell::new(cloned_self))
     }
 
     pub fn tokenize(&self, text: impl IntoTokenString) -> TokenString {
@@ -157,22 +170,16 @@ impl Model {
             anyhow::bail!("prompt was empty")
         }
 
-        // Create pipeline
-        let pipeline = self
-            .model_type
-            .create_pipeline(&self.config, self.vb.clone());
-
         // Create logits processor
         // We use a small amount of top_p to prevent the model from generating extremely unlikely tokens
         let logits_processor = LogitsProcessor::new(self.next_seed(), Some(params.temperature), Some(0.85));
 
         // Create the iterator
         Ok(InferIter::new(
-            self,
+            self.clone(),
             self.device.clone(),
             prompt,
             self.vocab_size,
-            pipeline,
             logits_processor,
             params,
         ))
@@ -187,9 +194,15 @@ impl Model {
         self.infer_iter(prompt, params)
             .unwrap()
     }
+
+    /// Clear the model's KV cache.
+    pub fn clear_cache(&mut self) {
+        self.pipeline.clear_cache();
+    }
 }
 
 /// Contains a pipeline, could be one of multiple types.
+#[derive(Debug, Clone)]
 pub enum ModelPipeline {
     Qwen2(Qwen2),
     Qwen3(Qwen3),
@@ -204,8 +217,8 @@ impl ModelPipeline {
         }
     }
 
-    /// Reset the pipeline's KV cache. Should be called between different inference runs.
-    pub fn reset_cache(&mut self) {
+    /// Clear the pipeline's KV cache.
+    pub fn clear_cache(&mut self) {
         match self {
             ModelPipeline::Qwen2(qwen2) => qwen2.clear_kv_cache(),
             ModelPipeline::Qwen3(qwen3) => qwen3.clear_kv_cache(),

@@ -13,11 +13,11 @@ impl Joiner {
     pub fn new(model: &mut Model) -> Self {
         let example_chat_history = [
             ChatMessage::new(ChatRole::User, "an apple | orange | banana"),
-            ChatMessage::new(ChatRole::Model, "\"an apple, an orange, and a banana\""),
+            ChatMessage::new(ChatRole::Assistant, "\"an apple, an orange, and a banana\""),
             ChatMessage::new(ChatRole::User, "Please inform | Jack | meeting | 3PM | !"),
-            ChatMessage::new(ChatRole::Model, "\"Please inform Jack about the meeting at 3:00 PM!\""),
+            ChatMessage::new(ChatRole::Assistant, "\"Please inform Jack about the meeting at 3:00 PM!\""),
             ChatMessage::new(ChatRole::User, "I am | drive | red | big | car."),
-            ChatMessage::new(ChatRole::Model, "\"I am driving a big red car.\""),
+            ChatMessage::new(ChatRole::Assistant, "\"I am driving a big red car.\""),
         ];
 
         let chat = Chat::new(
@@ -28,6 +28,7 @@ impl Joiner {
             values. Do not add extra symbols or punctuation other than that which is in the input.",
             &example_chat_history,
             &InferParams::new_balanced(),
+            None,
         );
         Self { chat }
     }
@@ -45,6 +46,6 @@ impl Joiner {
         self.chat.push_message(ChatMessage::new(ChatRole::User, input));
 
         // Infer a model response with the input and return the result
-        self.chat.infer_message(&ChatRole::Model, Some("\""), &["\""])
+        self.chat.infer_message(&ChatRole::Assistant, Some("\""), &["\""])
     }
 }

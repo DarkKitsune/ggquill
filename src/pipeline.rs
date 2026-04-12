@@ -57,6 +57,7 @@ impl PipelineStep {
                 chat.push_message(ChatMessage::new(ChatRole::Other("system".to_string()), prompt.clone()));
                 None
             }
+
             PipelineStep::Instruct {
                 instruction,
                 begin_sequence,
@@ -73,7 +74,7 @@ impl PipelineStep {
 
                 // Infer a response from the model using the instruction as a prompt
                 Some(chat.infer_message(
-                    &ChatRole::Model,
+                    &ChatRole::Assistant,
                     begin_sequence.as_deref(),
                     &end_sequences.iter().map(String::as_str).collect::<Vec<_>>(),
                 ).trim().to_string())
@@ -101,7 +102,7 @@ impl PipelineStep {
 
                 // Infer a response from the model using the instruction as a prompt
                 Some(chat.infer_message(
-                    &ChatRole::Model,
+                    &ChatRole::Assistant,
                     Some("**Here is the summary:**\n"),
                     &[],
                 ).trim().to_string())
@@ -144,6 +145,7 @@ impl Pipeline {
             DEFAULT_SYSTEM_PROMPT,
             &[],
             &InferParams::new_balanced(),
+            None,
         );
         Self { chat, steps: Vec::new(), persistent_memory: true, has_executed: false }
     }
@@ -173,7 +175,7 @@ impl Pipeline {
     pub fn execute(&mut self, context: &mut JsonMap) {
         // If we have already executed, and persistent_memory is false, then reset the chat
         if self.has_executed && !self.persistent_memory {
-            self.chat.reset(DEFAULT_SYSTEM_PROMPT, vec![]);
+            self.chat.reset(DEFAULT_SYSTEM_PROMPT, vec![], None);
         }
         self.has_executed = true;
 
