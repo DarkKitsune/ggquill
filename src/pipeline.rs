@@ -50,6 +50,10 @@ impl PipelineStep {
         // If a result needs to be stored in the context then it will be stored in `result`
         let result = match self {
             PipelineStep::SystemPrompt(prompt) => {
+                // Substitute context keys in the prompt
+                let prompt = substitute_context_keys(prompt, context);
+
+                // Add the system prompt as a system message to the chat
                 chat.push_message(ChatMessage::new(ChatRole::Other("system".to_string()), prompt.clone()));
                 None
             }
