@@ -15,7 +15,10 @@ impl Joiner {
             ChatMessage::new(ChatRole::User, "an apple | orange | banana"),
             ChatMessage::new(ChatRole::Assistant, "\"an apple, an orange, and a banana\""),
             ChatMessage::new(ChatRole::User, "Please inform | Jack | meeting | 3PM | !"),
-            ChatMessage::new(ChatRole::Assistant, "\"Please inform Jack about the meeting at 3:00 PM!\""),
+            ChatMessage::new(
+                ChatRole::Assistant,
+                "\"Please inform Jack about the meeting at 3:00 PM!\"",
+            ),
             ChatMessage::new(ChatRole::User, "I am | drive | red | big | car."),
             ChatMessage::new(ChatRole::Assistant, "\"I am driving a big red car.\""),
         ];
@@ -43,9 +46,11 @@ impl Joiner {
             .join(" | ");
 
         // Push the input as a user message to the chat
-        self.chat.push_message(ChatMessage::new(ChatRole::User, input));
+        self.chat
+            .push_message(ChatMessage::new(ChatRole::User, input));
 
         // Infer a model response with the input and return the result
-        self.chat.infer_message(&ChatRole::Assistant, Some("\""), &["\""])
+        self.chat
+            .infer_message(&ChatRole::Assistant, Some("\""), &["\""])
     }
 }

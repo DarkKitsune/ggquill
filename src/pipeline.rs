@@ -5,7 +5,9 @@ use anyhow::Result;
 
 use crate::{
     chat::{Chat, ChatMessage, ChatRole},
-    data::{JsonMap, JsonValue}, model::Model, prelude::InferParams,
+    data::{JsonMap, JsonValue},
+    model::Model,
+    prelude::InferParams,
 };
 
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful assistant. You answer questions and follow instructions directly, \
@@ -54,7 +56,10 @@ impl PipelineStep {
                 let prompt = substitute_context_keys(prompt, context);
 
                 // Add the system prompt as a system message to the chat
-                chat.push_message(ChatMessage::new(ChatRole::Other("system".to_string()), prompt.clone()));
+                chat.push_message(ChatMessage::new(
+                    ChatRole::Other("system".to_string()),
+                    prompt.clone(),
+                ));
                 None
             }
 
@@ -66,51 +71,72 @@ impl PipelineStep {
             } => {
                 // Substitute context keys
                 let instruction = substitute_context_keys(instruction, context);
-                let begin_sequence = begin_sequence.as_ref().map(|s| substitute_context_keys(s, context));
-                let end_sequences = end_sequences.iter().map(|s| substitute_context_keys(s, context)).collect::<Vec<_>>();
+                let begin_sequence = begin_sequence
+                    .as_ref()
+                    .map(|s| substitute_context_keys(s, context));
+                let end_sequences = end_sequences
+                    .iter()
+                    .map(|s| substitute_context_keys(s, context))
+                    .collect::<Vec<_>>();
 
                 // Add the instruction as a user message to the chat
                 chat.push_message(ChatMessage::new(ChatRole::User, instruction.clone()));
 
                 // Infer a response from the model using the instruction as a prompt
-                Some(chat.infer_message(
-                    &ChatRole::Assistant,
-                    begin_sequence.as_deref(),
-                    &end_sequences.iter().map(String::as_str).collect::<Vec<_>>(),
-                ).trim().to_string())
+                Some(
+                    chat.infer_message(
+                        &ChatRole::Assistant,
+                        begin_sequence.as_deref(),
+                        &end_sequences.iter().map(String::as_str).collect::<Vec<_>>(),
+                    )
+                    .trim()
+                    .to_string(),
+                )
             }
 
-            PipelineStep::Summarize { style_hint, to_summarize, .. } => {
+            PipelineStep::Summarize {
+                style_hint,
+                to_summarize,
+                ..
+            } => {
                 // Substitute context keys
                 let style_hint = substitute_context_keys(style_hint, context);
                 let to_summarize = substitute_context_keys(to_summarize, context);
 
                 // Write the instruction
                 let style_prompt = if !style_hint.is_empty() {
-                    format!("\n\n**The summary should have the following characteristic(s):**\n{}", style_hint)
+                    format!(
+                        "\n\n**The summary should have the following characteristic(s):**\n{}",
+                        style_hint
+                    )
                 } else {
                     "".to_string()
                 };
                 let instruction = format!(
                     "**Summarize the following text:**\n\"{}\"{}",
-                    to_summarize,
-                    style_prompt,
+                    to_summarize, style_prompt,
                 );
 
                 // Add the instruction as a user message to the chat
                 chat.push_message(ChatMessage::new(ChatRole::User, instruction));
 
                 // Infer a response from the model using the instruction as a prompt
-                Some(chat.infer_message(
-                    &ChatRole::Assistant,
-                    Some("**Here is the summary:**\n"),
-                    &[],
-                ).trim().to_string())
+                Some(
+                    chat.infer_message(
+                        &ChatRole::Assistant,
+                        Some("**Here is the summary:**\n"),
+                        &[],
+                    )
+                    .trim()
+                    .to_string(),
+                )
             }
         };
 
         // Store the response in the context under the result key
-        if let Some(result) = result && let Some(result_key) = self.result_key() {
+        if let Some(result) = result
+            && let Some(result_key) = self.result_key()
+        {
             context.insert(result_key.clone(), JsonValue::String(result.to_string()));
         }
 
@@ -147,7 +173,12 @@ impl Pipeline {
             &InferParams::new_balanced(),
             None,
         );
-        Self { chat, steps: Vec::new(), persistent_memory: true, has_executed: false }
+        Self {
+            chat,
+            steps: Vec::new(),
+            persistent_memory: true,
+            has_executed: false,
+        }
     }
 
     /// Sets whether the pipeline should use persistent memory.

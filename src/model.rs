@@ -62,10 +62,9 @@ impl Model {
 
         // Create VarBuilder
         let vb = unsafe { VarBuilder::from_mmaped_safetensors(&model_filenames, dtype, &device)? };
-        
+
         // Create pipeline
-        let pipeline = model_type
-            .create_pipeline(&config, vb);
+        let pipeline = model_type.create_pipeline(&config, vb);
 
         // Create tokenizer
         let tokenizer = Tokenizer::from_file(tokenizer_filename).map_err(E::msg)?;
@@ -118,7 +117,7 @@ impl Model {
 
         // Get the token ids
         let token_ids = tokens.get_ids().to_vec();
-        
+
         let mut cloned_self = self.clone();
         cloned_self.clear_cache();
         TokenString::new(token_ids, RefCell::new(cloned_self))
@@ -172,7 +171,8 @@ impl Model {
 
         // Create logits processor
         // We use a small amount of top_p to prevent the model from generating extremely unlikely tokens
-        let logits_processor = LogitsProcessor::new(self.next_seed(), Some(params.temperature), Some(0.85));
+        let logits_processor =
+            LogitsProcessor::new(self.next_seed(), Some(params.temperature), Some(0.85));
 
         // Create the iterator
         Ok(InferIter::new(
@@ -191,8 +191,7 @@ impl Model {
         prompt: impl IntoTokenString,
         params: &InferParams,
     ) -> InferIter {
-        self.infer_iter(prompt, params)
-            .unwrap()
+        self.infer_iter(prompt, params).unwrap()
     }
 
     /// Clear the model's KV cache.

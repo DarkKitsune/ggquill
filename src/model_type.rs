@@ -45,10 +45,7 @@ impl ModelType {
 
     /// Returns true if this model type supports "thinking" functionality.
     pub fn can_think(&self) -> bool {
-        matches!(
-            self,
-            ModelType::Qwen25Instruct | ModelType::Qwen3(_)
-        )
+        matches!(self, ModelType::Qwen25Instruct | ModelType::Qwen3(_))
     }
 
     /// Returns true if this model requires the think tag to be present regardless.
@@ -170,7 +167,9 @@ impl ModelType {
 
         // For now we just panic if thinking is required
         if self.must_think() {
-            unimplemented!("ModelType::create_chat_prompt does not yet support models that require thinking")
+            unimplemented!(
+                "ModelType::create_chat_prompt does not yet support models that require thinking"
+            )
         }
 
         // Add the system prompt to the system section

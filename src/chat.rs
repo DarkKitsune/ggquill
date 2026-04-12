@@ -32,18 +32,14 @@ impl Chat {
         extra_data: Option<JsonMap>,
     ) -> Self {
         // Create the initial context for the chat using the model's prompt template and tokenize it
-        let full_prompt = model
-            .model_type()
-            .create_chat_prompt(system_prompt, chat_history, extra_data.as_ref());
+        let full_prompt =
+            model
+                .model_type()
+                .create_chat_prompt(system_prompt, chat_history, extra_data.as_ref());
         let initial_context = model.tokenize(full_prompt);
 
         // Create the InferIter for the chat with the initial context
-        let infer_iter = model
-            .infer_iter(
-                initial_context,
-                infer_params,
-            )
-            .unwrap();
+        let infer_iter = model.infer_iter(initial_context, infer_params).unwrap();
 
         Self {
             model_type: model.model_type(),
@@ -55,18 +51,34 @@ impl Chat {
     }
 
     /// Resets the chat using a given system prompt and chat history.
-    pub fn reset(&mut self, system_prompt: impl AsRef<str>, chat_history: Vec<ChatMessage>, long_term_memory: Option<String>) {
+    pub fn reset(
+        &mut self,
+        system_prompt: impl AsRef<str>,
+        chat_history: Vec<ChatMessage>,
+        long_term_memory: Option<String>,
+    ) {
         // If long term memory is provided, set it in key "memory" of self.extra_data for the prompt template
         // Also create self.extra_data if it doesn't exist yet
         if let Some(long_term_memory) = &long_term_memory {
             let extra_data = self.extra_data.get_or_insert_with(JsonMap::new);
-            extra_data.insert("long_term_memory".to_string(), JsonValue::String(long_term_memory.clone()));
+            extra_data.insert(
+                "long_term_memory".to_string(),
+                JsonValue::String(long_term_memory.clone()),
+            );
         }
 
-
         // Create the initial context for the chat using the model's prompt template and tokenize it
-        let full_prompt = self.model_type.create_chat_prompt(system_prompt, &chat_history, self.extra_data.as_ref());
-        let initial_context = self.infer_iter.last_context().model.borrow().tokenize(full_prompt);
+        let full_prompt = self.model_type.create_chat_prompt(
+            system_prompt,
+            &chat_history,
+            self.extra_data.as_ref(),
+        );
+        let initial_context = self
+            .infer_iter
+            .last_context()
+            .model
+            .borrow()
+            .tokenize(full_prompt);
 
         // Reset the InferIter for the chat with the new initial context
         self.infer_iter.reset(initial_context);
@@ -78,8 +90,7 @@ impl Chat {
     pub fn push_message(&mut self, message: ChatMessage) {
         // First add the complete message prompt to the message buffer
         self.infer_iter.push_str(
-             self
-                .model_type
+            self.model_type
                 .create_chat_message_begin_prompt(message.sender()),
         );
         self.infer_iter.push_str(message.content());
@@ -118,12 +129,11 @@ impl Chat {
         full_end_sequences.extend_from_slice(end_sequences);
 
         // Then infer the response from the model until we get one of the end sequences back
-        let response = self
-            .infer_iter
-            .complete(&full_end_sequences);
+        let response = self.infer_iter.complete(&full_end_sequences);
 
         // Reset the message buffer to just the end message prompt
-        self.infer_iter.push_str(self.model_type.create_chat_message_end_prompt());
+        self.infer_iter
+            .push_str(self.model_type.create_chat_message_end_prompt());
 
         // Add the inferred response to the chat history as a new message
         let message = ChatMessage::new(sender.clone(), response.unwrap());
@@ -153,7 +163,7 @@ impl Chat {
         let mut tokens = self.infer_iter.last_context().len();
         // Add an estimate for pending context
         tokens += self.infer_iter.pending_context().len() / ESTIMATE_CHARACTERS_PER_TOKEN;
-        
+
         tokens
     }
 
@@ -161,7 +171,10 @@ impl Chat {
     /// storing the summary in past_memory, and then resetting the chat history to just the other half of the chat history.
     fn compress_memory(&mut self) {
         // Start with either the long_term_memory or an empty string as the base for the summary prompt
-        let mut prompt = self.long_term_memory.clone().map_or_else(String::new, |mem| format!("{}\n\n", mem));
+        let mut prompt = self
+            .long_term_memory
+            .clone()
+            .map_or_else(String::new, |mem| format!("{}\n\n", mem));
 
         // Get the message count of half of the chat history (the older half) to include in the summary
         let half = self.chat_history.len() / 2;
@@ -206,20 +219,13 @@ impl Chat {
         ));
 
         // Infer the summary from the model
-        let summary = self.infer_message(
-            &ChatRole::Assistant,
-            Some("Summary:\n"),
-            &[],
-        ).trim()
-         .to_string();
+        let summary = self
+            .infer_message(&ChatRole::Assistant, Some("Summary:\n"), &[])
+            .trim()
+            .to_string();
 
         // Reset self to the new state for further conversing
-        self.reset(
-            new_system_prompt,
-            new_chat_history,
-            Some(summary),
-        );
-
+        self.reset(new_system_prompt, new_chat_history, Some(summary));
     }
 }
 
@@ -233,7 +239,10 @@ pub struct ChatMessage {
 impl ChatMessage {
     /// Creates a new chat message.
     pub fn new(sender: ChatRole, content: impl Display) -> Self {
-        Self { sender, content: content.to_string() }
+        Self {
+            sender,
+            content: content.to_string(),
+        }
     }
 
     /// Returns the sender of the message.

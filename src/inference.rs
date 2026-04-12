@@ -2,8 +2,8 @@ use candle_core::{Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
 
 use crate::{
-    model::{Model, ModelPipeline},
-    prelude::{IntoTokenString, ModelType, TokenString},
+    model::Model,
+    prelude::{IntoTokenString, TokenString},
 };
 
 /// Parameters for inference. This is used to configure the inference process, such as the repeat penalty.
@@ -29,7 +29,7 @@ impl InferParams {
             repeat_scan_length: 72,
         }
     }
-    
+
     /// Returns a new InferParams with basic parameters set for balanced output.
     /// This is good for general use and is a good starting point for most tasks.
     pub fn new_balanced() -> Self {
@@ -39,7 +39,7 @@ impl InferParams {
             repeat_scan_length: 36,
         }
     }
-    
+
     /// Returns a new InferParams with basic parameters set for logical, near-deterministic output.
     /// This is good for tasks like parsing, extracting information, or code generation.
     pub fn new_logical() -> Self {
@@ -140,7 +140,7 @@ impl InferIter {
             step: 0,
         }
     }
-    
+
     /// Push some text into the context.
     pub fn push_str(&mut self, text: impl AsRef<str>) {
         self.pending_context.push_str(text.as_ref());
@@ -221,10 +221,7 @@ impl InferIter {
 
     /// Run the iterator until completion or until one of `end_sequences` is generated
     /// and return everything up to that point as a `String`, as well as the end sequence that was reached
-    pub fn complete<'a>(
-        &mut self,
-        end_sequences: &'a [&str],
-    ) -> InferCompletion<'a> {
+    pub fn complete<'a>(&mut self, end_sequences: &'a [&str]) -> InferCompletion<'a> {
         let mut response = String::new();
         while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1

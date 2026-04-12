@@ -2,13 +2,13 @@ pub mod actor;
 pub mod chat;
 pub mod data;
 pub mod inference;
+pub mod joiner;
 pub mod model;
 pub mod model_type;
 pub mod pipeline;
 pub mod prelude;
 pub mod scene;
 pub mod token_string;
-pub mod joiner;
 
 #[cfg(test)]
 mod tests {
@@ -16,7 +16,6 @@ mod tests {
 
     use crate::prelude::*;
 
-    
     #[test]
     fn pipeline() {
         const SEED: u64 = 46364;
@@ -33,7 +32,7 @@ mod tests {
         // Add a system propmt instructing the model to act as a poet
         pipeline.system_prompt(
             "You are a talented poet who writes beautiful and creative poems. \
-            Your poems should be 2 or 3 stanzas long and rhyme."
+            Your poems should be 2 or 3 stanzas long and rhyme.",
         );
 
         // Add an instruct step to the pipeline which generates a poem based on the theme in {theme}
@@ -52,11 +51,7 @@ mod tests {
         );
 
         // Add a step to the pipeline which summarizes the poem in {poem} and stores the summary in the context under {summary}
-        pipeline.summarize(
-            "summary",
-            "{poem}",
-            "Concise and easy to understand",
-        );
+        pipeline.summarize("summary", "{poem}", "Concise and easy to understand");
 
         // Execute the pipeline on the model for each poem theme and print the poem and summary outputs
         for theme in POEM_THEMES {
@@ -140,10 +135,40 @@ mod tests {
             &["the cat", "sat on", "the mat"],
             &["jack saw", "red roses", "beautiful sunset"],
             &["the quick", "brown fox", "jumps over", "the lazy dog."],
-            &["The ingredients for the recipe are", "flour", "sugar", "eggs", "milk", "butter", "."],
-            &["To get to", "a park", "go", "straight", "two blocks", "turn left", "on right", "."],
-            &["The weather today is", "sunny", "with a high of 75 degrees", "and a low of 55 degrees", "."],
-            &["func", "test(", "foo: number", ") {", "return foo * 2;", "}"],
+            &[
+                "The ingredients for the recipe are",
+                "flour",
+                "sugar",
+                "eggs",
+                "milk",
+                "butter",
+                ".",
+            ],
+            &[
+                "To get to",
+                "a park",
+                "go",
+                "straight",
+                "two blocks",
+                "turn left",
+                "on right",
+                ".",
+            ],
+            &[
+                "The weather today is",
+                "sunny",
+                "with a high of 75 degrees",
+                "and a low of 55 degrees",
+                ".",
+            ],
+            &[
+                "func",
+                "test(",
+                "foo: number",
+                ") {",
+                "return foo * 2;",
+                "}",
+            ],
         ];
 
         // Create the model
@@ -169,10 +194,7 @@ mod tests {
         let mut story = "There was once".to_string();
         story.push_str(
             &model
-                .predict_next(
-                    "long_story = \"There was once",
-                    &InferParams::new_creative(),
-                )
+                .predict_next("story = \"There was once", &InferParams::new_creative())
                 .complete(&["\""])
                 .unwrap(),
         );
