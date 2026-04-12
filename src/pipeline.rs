@@ -29,6 +29,7 @@ fn substitute_context_keys(input: impl AsRef<str>, context: &JsonMap) -> String 
 
 /// A step in the pipeline.
 pub enum PipelineStep {
+    SystemPrompt(String),
     Instruct {
         result_key: String,
         instruction: String,
@@ -48,6 +49,10 @@ impl PipelineStep {
         // Match self to determine the type of pipeline step and execute accordingly
         // If a result needs to be stored in the context then it will be stored in `result`
         let result = match self {
+            PipelineStep::SystemPrompt(prompt) => {
+                chat.push_message(ChatMessage::new(ChatRole::Other("system".to_string()), prompt.clone()));
+                None
+            }
             PipelineStep::Instruct {
                 instruction,
                 begin_sequence,
@@ -111,6 +116,7 @@ impl PipelineStep {
     /// If the step produces a result that should be stored in the context, this is the key under which it should be stored.
     fn result_key(&self) -> Option<&String> {
         match self {
+            PipelineStep::SystemPrompt(_) => None,
             PipelineStep::Instruct { result_key, .. } => Some(result_key),
             PipelineStep::Summarize { result_key, .. } => Some(result_key),
         }
@@ -135,7 +141,7 @@ impl Pipeline {
             &[],
             &InferParams::new_balanced(),
         );
-        Self { chat, steps: Vec::new(), persistent_memory: false, has_executed: false }
+        Self { chat, steps: Vec::new(), persistent_memory: true, has_executed: false }
     }
 
     /// Sets whether the pipeline should use persistent memory.
@@ -161,8 +167,8 @@ impl Pipeline {
 
     /// Execute the pipeline with the given context, returning the final response.
     pub fn execute(&mut self, context: &mut JsonMap) {
-        // If we have already executed, then reset the chat
-        if self.has_executed {
+        // If we have already executed, and persistent_memory is false, then reset the chat
+        if self.has_executed && !self.persistent_memory {
             self.chat.reset(DEFAULT_SYSTEM_PROMPT, vec![]);
         }
         self.has_executed = true;
@@ -171,6 +177,13 @@ impl Pipeline {
         for step in &self.steps {
             step.execute(&mut self.chat, context).unwrap();
         }
+    }
+
+    /// Add a system prompt step to the pipeline. This is used to direct the model's behavior in subsequent steps.
+    /// Returns a mutable reference to the pipeline to allow for chaining.
+    pub fn system_prompt(&mut self, prompt: impl Display) -> &mut Self {
+        self.add_step(PipelineStep::SystemPrompt(prompt.to_string()));
+        self
     }
 
     /// Add an instruct step.

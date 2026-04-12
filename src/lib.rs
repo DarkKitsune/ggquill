@@ -30,20 +30,32 @@ mod tests {
         let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
         let mut pipeline = Pipeline::new(&mut model);
 
+        // Add a system propmt instructing the model to act as a poet
+        pipeline.system_prompt(
+            "You are a talented poet who writes beautiful and creative poems. \
+            Your poems should be 2 or 3 stanzas long and rhyme."
+        );
+
         // Add an instruct step to the pipeline which generates a poem based on the theme in {theme}
         // And store the generated poem in the context under {poem}
         pipeline.instruct(
             "poem",
-            "Write a short rhyming poem based on the following theme: {theme}",
+            "Write a short poem based on the following theme: {theme}",
             Some("Here is the poem:\n".to_string()),
             vec![],
+        );
+
+        // Add a system prompt instructing the model to summarize poems in a concise manner while preserving the core meaning and style of the original poem
+        pipeline.system_prompt(
+            "When summarizing a poem, you should create a concise version of the poem that preserves the core \
+                meaning and style of the original poem. The summary should be much shorter than the original poem."
         );
 
         // Add a step to the pipeline which summarizes the poem in {poem} and stores the summary in the context under {summary}
         pipeline.summarize(
             "summary",
             "{poem}",
-            "The summary must be a poem too.",
+            "Concise and easy to understand",
         );
 
         // Execute the pipeline on the model for each poem theme and print the poem and summary outputs
