@@ -186,14 +186,9 @@ impl Instructor {
                         infer_iter.push_str(": ");
 
                         // Infer the argument value until we get a comma or a closing parenthesis
-                        let arg_end_sequences = if i == instruction_def.param_names.len() - 1 {
-                            vec![")"]
-                        } else {
-                            vec![",", ")"]
-                        };
-                        let arg_response = infer_iter.complete(&arg_end_sequences);
+                        let arg_response = infer_iter.complete(&[",", ")"]);
 
-                        // If the response ended with a closing parenthesis instead of a comma and we still have parameters left to infer, return None
+                        // If the response ended with a closing parenthesis instead of a comma and we still have arguments left to infer, return None
                         if arg_response.end_sequence() == Some(")")
                             && i != instruction_def.param_names.len() - 1
                         {
