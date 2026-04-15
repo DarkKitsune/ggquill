@@ -30,7 +30,7 @@ impl Joiner {
             formatted and grammatically correct string in double quotes which incorporates all of the input \
             values. Do not add extra symbols or punctuation other than that which is in the input.",
             &example_chat_history,
-            &InferParams::new_balanced(),
+            &InferParams::new_logical(),
             None,
         );
         Self { chat }

@@ -104,12 +104,32 @@ impl Chat {
 
     /// Infer a new message from the model and push it to the chat history.
     /// If a begin_sequence is provided, it is treated as if it was prepended to the model's response, influencing the inference.
+    /// Returns the content of the inferred message and a mutable reference to the InferIter, allowing for further inference.
     pub fn infer_message(
         &mut self,
         sender: &ChatRole,
         begin_sequence: Option<&str>,
         end_sequences: &[&str],
     ) -> &str {
+        self.infer_message_ext(sender, begin_sequence, end_sequences, |_, _, _| {})
+            .0
+    }
+
+    /// Infer a new message from the model and push it to the chat history.
+    /// If a begin_sequence is provided, it is treated as if it was prepended to the model's response, influencing the inference.
+    /// Returns the content of the inferred message and a mutable reference to the InferIter, allowing for further inference.
+    /// The after_response callback is given the message, a mutable reference to the InferIter and the end sequence which caused the
+    /// inference to end, allowing for further inference to be done before ending the message.
+    pub fn infer_message_ext<R>(
+        &mut self,
+        sender: &ChatRole,
+        begin_sequence: Option<&str>,
+        end_sequences: &[&str],
+        // Callback which is given the message, a mutable reference to the internal InferIter after the inference is done,
+        // as well as the end sequence (if any) which caused the inference to end,
+        // allowing for further inference to be done before ending the message.
+        mut after_response: impl FnMut(&str, &mut InferIter, Option<&str>) -> R,
+    ) -> (&str, R) {
         // If the chat history is too long, we want to compress the memory.
         if self.estimate_token_len() > COMPRESS_MEMORY_THRESHOLD {
             self.compress_memory();
@@ -131,14 +151,24 @@ impl Chat {
         // Then infer the response from the model until we get one of the end sequences back
         let response = self.infer_iter.complete(&full_end_sequences);
 
+        // If there is an after_response callback then call it with a mutable reference to the InferIter and the end sequence which caused the inference to end
+        let after_response_result = after_response(
+            response.result(),
+            &mut self.infer_iter,
+            response.end_sequence(),
+        );
+
         // Reset the message buffer to just the end message prompt
         self.infer_iter
             .push_str(self.model_type.create_chat_message_end_prompt());
 
         // Add the inferred response to the chat history as a new message
-        let message = ChatMessage::new(sender.clone(), response.unwrap());
+        let message = ChatMessage::new(sender.clone(), response.result());
         self.chat_history.push(message);
-        self.chat_history.last().unwrap().content()
+        (
+            self.chat_history.last().unwrap().content(),
+            after_response_result,
+        )
     }
 
     /// Get the last message in the chat history, if any.

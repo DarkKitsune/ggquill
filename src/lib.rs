@@ -2,12 +2,12 @@ pub mod actor;
 pub mod chat;
 pub mod data;
 pub mod inference;
+pub mod instructor;
 pub mod joiner;
 pub mod model;
 pub mod model_type;
 pub mod pipeline;
 pub mod prelude;
-pub mod scene;
 pub mod token_string;
 
 #[cfg(test)]
@@ -202,67 +202,57 @@ mod tests {
     }
 
     #[test]
-    fn scene() {
-        const SEED: u64 = 12345;
-        const STORY_CYCLES: usize = 5;
+    fn instructor() {
+        const SEED: u64 = 98765;
+        const INSTRUCTIONS: &[&str] = &[
+            "Email Jessie a snarky message about how she is the worst.",
+            "Walk my dog Max in the park at 5 PM tomorrow.",
+            "Order a pizza from Cosmic Joe's with pepperoni, mushrooms, and extra cheese.",
+            "Remind me to call Alice about the project update at 3 PM today. Subject: Project Update Reminder.",
+        ];
 
         // Create the model
-        let model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
-        // Create a new scene
-        let mut scene = Scene::new(
-            "Forest Encounter",
-            "The scene opens in a dense forest. Alice and Bob are exploring the area, \
-            looking for signs of a supposed nearby ruin.",
-            model,
-        );
+        // Define some instruction definitions for the instructor to learn from
+        let instruction_definitions = vec![
+            InstructionDefinition::new(
+                "send_email",
+                vec!["recipient".into(), "subject".into(), "body".into()],
+                "Send a short email to John reminding him about the meeting tomorrow at half past 10.",
+                vec![
+                    "John".into(),
+                    "Meeting Reminder".into(),
+                    "Don't forget about our meeting tomorrow at 10:30 AM!".into(),
+                ],
+            ),
+            InstructionDefinition::new(
+                "travel",
+                vec!["destination".into(), "when".into(), "travel_method".into()],
+                "I'd like to drive my red car to Paris tomorrow.",
+                vec!["Paris".into(), "tomorrow".into(), "car".into()],
+            ),
+            InstructionDefinition::new(
+                "order_food",
+                vec!["from_where".into(), "dish".into()],
+                "Yesterday I went to the burger place down the street. I got the bbq bacon burger and it was delicious!",
+                vec![
+                    "the burger place down the street".into(),
+                    "bbq bacon burger".into(),
+                ],
+            ),
+        ];
 
-        // Add actors to the scene
-        scene.add_actor(Actor::new(
-            "Alice",
-            "A curious and adventurous young woman, with a knack for archery.",
-        ));
-        scene.add_actor(Actor::new(
-            "Bob",
-            "A cautious and thoughtful young man, always looking out for his friends.",
-        ));
+        // Create an instructor with the instruction definitions
+        let mut instructor = Instructor::new(&mut model, instruction_definitions);
 
-        // Add a turn to the scene
-        scene
-            .add_turn(SceneTurn::dialogue("Alice", "What is that over there?"))
-            .unwrap();
-        scene
-            .add_turn(SceneTurn::dialogue(
-                "Bob",
-                "I think it's a mysterious creature.",
-            ))
-            .unwrap();
-
-        // Infer scene turns
-        let infer_params = InferParams::new_creative();
-        for _ in 0..STORY_CYCLES {
-            scene
-                .infer_next_turn(InferredSceneTurn::story(), &infer_params)
-                .unwrap();
-
-            scene
-                .infer_next_turn(
-                    InferredSceneTurn::action("Alice".to_string()),
-                    &infer_params,
-                )
-                .unwrap();
-
-            scene
-                .infer_next_turn(
-                    InferredSceneTurn::dialogue("Bob".to_string()),
-                    &infer_params,
-                )
-                .unwrap();
-
-            println!("\n{}\n", scene);
+        // Parse each instruction in INSTRUCTIONS and print the resulting function calls
+        for instruction in INSTRUCTIONS {
+            let parsed_instruction = instructor.parse_instruction(instruction).unwrap();
+            println!(
+                "Instruction:\n{}\n\nParsed instruction:\nName: {}\nArgs: {:?}\n\n\n",
+                instruction, parsed_instruction.name, parsed_instruction.args
+            );
         }
-
-        // Print the scene
-        println!("Scene:\n{}", scene);
     }
 }

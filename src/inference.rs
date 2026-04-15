@@ -24,9 +24,9 @@ impl InferParams {
     /// This is good for general conversation and creative tasks.
     pub fn new_creative() -> Self {
         Self {
-            temperature: 0.7,
+            temperature: 0.65,
             repeat_penalty: 1.1,
-            repeat_scan_length: 72,
+            repeat_scan_length: 64,
         }
     }
 
@@ -34,9 +34,9 @@ impl InferParams {
     /// This is good for general use and is a good starting point for most tasks.
     pub fn new_balanced() -> Self {
         Self {
-            temperature: 0.55,
+            temperature: 0.5,
             repeat_penalty: 1.05,
-            repeat_scan_length: 36,
+            repeat_scan_length: 48,
         }
     }
 
@@ -62,11 +62,7 @@ impl InferParams {
 
 impl Default for InferParams {
     fn default() -> Self {
-        Self {
-            temperature: 0.7,
-            repeat_penalty: 1.05,
-            repeat_scan_length: 64,
-        }
+        Self::new_balanced()
     }
 }
 
@@ -90,7 +86,7 @@ impl InferCompletion<'_> {
         self.end_sequence
     }
 
-    /// Get the complete result as it was generated.
+    /// Get the complete result as it was generated. Use `unwrap` if you just want a reference.
     pub fn result(&self) -> &str {
         &self.text
     }
