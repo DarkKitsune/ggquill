@@ -8,7 +8,6 @@ use candle_transformers::models::qwen3::{Config as Qwen3Config, ModelForCausalLM
 
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
-use candle_transformers::generation::LogitsProcessor;
 use hf_hub::api::sync::Api;
 use tokenizers::Tokenizer;
 
@@ -149,7 +148,7 @@ impl Model {
     }
 
     /// Increment the seed and return the new value. Useful for iterative tasks.
-    fn next_seed(&mut self) -> u64 {
+    pub fn next_seed(&mut self) -> u64 {
         self.seed = self.seed.wrapping_add(1);
         self.seed
     }
@@ -169,18 +168,12 @@ impl Model {
             anyhow::bail!("prompt was empty")
         }
 
-        // Create logits processor
-        // We use a small amount of top_p to prevent the model from generating extremely unlikely tokens
-        let logits_processor =
-            LogitsProcessor::new(self.next_seed(), Some(params.temperature), Some(0.85));
-
         // Create the iterator
         Ok(InferIter::new(
             self.clone(),
             self.device.clone(),
             prompt,
             self.vocab_size,
-            logits_processor,
             params,
         ))
     }

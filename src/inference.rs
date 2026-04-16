@@ -113,14 +113,19 @@ pub struct InferIter {
 }
 
 impl InferIter {
+    const TOP_P: f64 = 0.85;
+
     pub(crate) fn new(
-        model: Model,
+        mut model: Model,
         device: Device,
         tokens: TokenString,
         vocab_size: usize,
-        logits_processor: LogitsProcessor,
         params: &InferParams,
     ) -> Self {
+        // Create logits processor
+        let logits_processor =
+            LogitsProcessor::new(model.next_seed(), Some(params.temperature), Some(Self::TOP_P));
+
         let eos_token = model.eos_token();
         Self {
             model,
@@ -335,6 +340,13 @@ impl InferIter {
     /// and which has not yet been included in any inference context.
     pub(crate) fn pending_context(&self) -> &str {
         &self.pending_context
+    }
+
+    /// Updates the inference parameters for this InferIter.
+    pub fn update_params(&mut self, params: &InferParams) {
+        self.logits_processor = LogitsProcessor::new(self.model.next_seed(), Some(params.temperature), Some(Self::TOP_P));
+        self.repeat_penalty = params.repeat_penalty;
+        self.repeat_scan_length = params.repeat_scan_length;
     }
 }
 

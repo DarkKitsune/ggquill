@@ -271,6 +271,11 @@ impl Chat {
         // Reset self to the new state for further conversing
         self.reset(new_system_prompt, new_chat_history, Some(summary));
     }
+
+    /// Update the inference parameters for the chat's InferIter.
+    pub fn update_infer_params(&mut self, params: &InferParams) {
+        self.infer_iter.update_params(params);
+    }
 }
 
 /// Represents a single message in a chat.

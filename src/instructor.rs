@@ -50,7 +50,7 @@ impl Instructor {
     /// To make the model more deterministic in its returning of function names we use a prefix for all function names.
     const FUNC_PREFIX: &str = "fn_action_";
     /// Attempts to parse instructions from text until we just pass None back to signify that we failed to parse an instruction.
-    const MAX_PARSE_ATTEMPTS: usize = 7;
+    const MAX_PARSE_ATTEMPTS: usize = 8;
 
     /// Creates a new Instructor with the provided model, seed, temperature, and instruction definitions.
     pub fn new(model: &mut Model, instruction_definitions: Vec<InstructionDefinition>) -> Self {
@@ -195,8 +195,15 @@ impl Instructor {
                         infer_iter.push_str(param_name);
                         infer_iter.push_str(": ");
 
-                        // Infer the argument value until we get a comma or a closing parenthesis
-                        let arg_response = infer_iter.complete(&[",", ")"]);
+                        // Infer the argument value until we get a comma or a closing parenthesis.
+                        // If this is a string then complete to a " instead
+                        let arg_response = if param_type == "string" {
+                            // First push a " to the context so that the model will generate a closing " at the end of the string argument
+                            infer_iter.push_str("\"");
+                            infer_iter.complete(&["\""])
+                        } else {
+                            infer_iter.complete(&[",", ")"])
+                        };
 
                         // If the response ended with a closing parenthesis instead of a comma and we still have arguments left to infer, return None
                         if arg_response.end_sequence() == Some(")")
@@ -208,7 +215,7 @@ impl Instructor {
                         // Store the argument value trimmed and converted to JsonValue of type matching the param definition
                         let arg_value = arg_response.trim().to_string();
                         let arg_value = match param_type {
-                            "string" => JsonValue::String(arg_value.trim_matches('"').trim_matches('\'').to_string()),
+                            "string" => JsonValue::String(arg_value.to_string()),
                             "number" => JsonValue::Number(arg_value.parse().expect("Failed to parse number argument")),
                             "boolean" => JsonValue::Bool(arg_value.parse().expect("Failed to parse boolean argument")),
                             "array" => unimplemented!("Array argument parsing not implemented (yet)"),
@@ -224,6 +231,7 @@ impl Instructor {
                  break (instruction_def, args);
             }
 
+            // If we got here then we failed to parse an instruction
             // Increment attempts and if we've reached the max attempts then we return None
             attempts += 1;
             if attempts >= Self::MAX_PARSE_ATTEMPTS {
