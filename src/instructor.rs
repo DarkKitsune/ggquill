@@ -6,7 +6,7 @@ use crate::prelude::*;
 #[derive(Debug)]
 pub struct ParsedInstruction<'a> {
     pub name: &'a str,
-    pub args: Vec<String>,
+    pub args: JsonMap,
 }
 
 /// A single instruction definition which `Instructor` can use to parse instructions from text.
@@ -129,7 +129,7 @@ impl Instructor {
             model,
             Self::SYSTEM_PROMPT,
             &example_chat_history,
-            &InferParams::new_balanced(),
+            &InferParams::new_logical(),
             Some(extra_data),
         );
         Self {
@@ -157,14 +157,14 @@ impl Instructor {
             // Infer a response from the model
             // We begin with the prefix so that the model won't generate it
             let begin_response = format!("**Function Call:**\n{}", Self::FUNC_PREFIX);
-            let (_func_name, (instruction_def, args)) = self.chat.infer_message_ext(
+            if let Some((_func_name, (instruction_def, args))) = self.chat.infer_message_ext(
                 &ChatRole::Assistant,
                 Some(&begin_response),
                 &["("],
                 |func_name: &str, infer_iter: &mut InferIter, end_sequence: Option<&str>| {
                     // If the end sequence is not "(" then we return None since the model did not follow the expected format
                     if end_sequence != Some("(") {
-                        return (None, None);
+                        return None;
                     }
 
                     // Match func_name to an instruction definition by name
@@ -172,15 +172,25 @@ impl Instructor {
                     let instruction_def = self
                         .instruction_definitions
                         .iter()
-                        .find(|def| def.name == func_name);
-                    let instruction_def = match instruction_def {
-                        Some(def) => def,
-                        None => return (None, None),
-                    };
+                        .find(|def| def.name == func_name)?;
 
                     // Now we want to infer the arguments one by one, using the parameter names from the instruction definition as part of the prompt
-                    let mut args = Vec::new();
+                    let mut args = JsonMap::with_capacity(instruction_def.param_names.len());
                     for (i, param_name) in instruction_def.param_names.iter().enumerate() {
+                        // Get the parameter type from the example arguments in the instruction definition
+                        let example_arg = &instruction_def.example_args[i];
+                        let param_type = if example_arg.is_string() {
+                            "string"
+                        } else if example_arg.is_number() {
+                            "number"
+                        } else if example_arg.is_boolean() {
+                            "boolean"
+                        } else if example_arg.is_array() {
+                            "array"
+                        } else {
+                            "object"
+                        };
+
                         // Push the parameter name and a : onto the context
                         infer_iter.push_str(param_name);
                         infer_iter.push_str(": ");
@@ -192,24 +202,29 @@ impl Instructor {
                         if arg_response.end_sequence() == Some(")")
                             && i != instruction_def.param_names.len() - 1
                         {
-                            return (None, None);
+                            return None;
                         }
 
-                        // Store the argument value trimmed
+                        // Store the argument value trimmed and converted to JsonValue of type matching the param definition
                         let arg_value = arg_response.trim().to_string();
-                        args.push(arg_value);
+                        let arg_value = match param_type {
+                            "string" => JsonValue::String(arg_value.trim_matches('"').trim_matches('\'').to_string()),
+                            "number" => JsonValue::Number(arg_value.parse().expect("Failed to parse number argument")),
+                            "boolean" => JsonValue::Bool(arg_value.parse().expect("Failed to parse boolean argument")),
+                            "array" => unimplemented!("Array argument parsing not implemented (yet)"),
+                            "object" => unimplemented!("Object argument parsing not implemented (yet)"),
+                            _ => JsonValue::String(arg_value),
+                        };
+                        args.insert(param_name.clone(), arg_value);
                     }
 
-                    (Some(instruction_def), Some(args))
+                    Some((instruction_def, args))
                 },
-            );
-
-            // If args is Some then we successfully parsed the instruction, so we break the loop and return the parsed instruction
-            if let Some(instruction_def) = instruction_def {
-                break (instruction_def, args.unwrap());
+            ) {
+                 break (instruction_def, args);
             }
 
-            // If we get here then we failed to parse the instruction, so we increment attempts and if we've reached the max attempts then we return None
+            // Increment attempts and if we've reached the max attempts then we return None
             attempts += 1;
             if attempts >= Self::MAX_PARSE_ATTEMPTS {
                 return None;

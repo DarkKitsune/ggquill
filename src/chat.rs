@@ -111,7 +111,8 @@ impl Chat {
         begin_sequence: Option<&str>,
         end_sequences: &[&str],
     ) -> &str {
-        self.infer_message_ext(sender, begin_sequence, end_sequences, |_, _, _| {})
+        self.infer_message_ext(sender, begin_sequence, end_sequences, |_, _, _| Some(()))
+            .unwrap()
             .0
     }
 
@@ -128,12 +129,16 @@ impl Chat {
         // Callback which is given the message, a mutable reference to the internal InferIter after the inference is done,
         // as well as the end sequence (if any) which caused the inference to end,
         // allowing for further inference to be done before ending the message.
-        mut after_response: impl FnMut(&str, &mut InferIter, Option<&str>) -> R,
-    ) -> (&str, R) {
+        // If the callback returns None then the message will end immediately and not be added to the chat history
+        mut after_response: impl FnMut(&str, &mut InferIter, Option<&str>) -> Option<R>,
+    ) -> Option<(&str, R)> {
         // If the chat history is too long, we want to compress the memory.
         if self.estimate_token_len() > COMPRESS_MEMORY_THRESHOLD {
             self.compress_memory();
         }
+
+        // Store the current InferIter context before the message
+        let context_before_message = self.infer_iter.full_context();
 
         // Add the beginning of the message prompt to the context
         self.infer_iter
@@ -158,6 +163,15 @@ impl Chat {
             response.end_sequence(),
         );
 
+        // If the after_response callback returned None then we reset self.infer_iter to context_before_message and return None
+        let after_response_result = match after_response_result {
+            Some(result) => result,
+            None => {
+                self.infer_iter.reset(context_before_message);
+                return None;
+            }
+        };
+
         // Reset the message buffer to just the end message prompt
         self.infer_iter
             .push_str(self.model_type.create_chat_message_end_prompt());
@@ -165,10 +179,10 @@ impl Chat {
         // Add the inferred response to the chat history as a new message
         let message = ChatMessage::new(sender.clone(), response.result());
         self.chat_history.push(message);
-        (
+        Some((
             self.chat_history.last().unwrap().content(),
             after_response_result,
-        )
+        ))
     }
 
     /// Get the last message in the chat history, if any.

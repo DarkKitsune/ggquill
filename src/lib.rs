@@ -206,7 +206,7 @@ mod tests {
         const SEED: u64 = 98765;
         const INSTRUCTIONS: &[&str] = &[
             "Email Jessie a snarky message about how she is the worst.",
-            "Walk my dog Max in the park at 5 PM tomorrow.",
+            "Walk my dog Max in the park at 5:25 PM tomorrow.",
             "Order a pizza from Cosmic Joe's with pepperoni, mushrooms, and extra cheese.",
             "Remind me to call Alice about the project update at 3 PM today. Subject: Project Update Reminder.",
         ];
@@ -228,9 +228,9 @@ mod tests {
             ),
             InstructionDefinition::new(
                 "travel",
-                vec!["destination".into(), "when".into(), "travel_method".into()],
-                "I'd like to drive my red car to Paris tomorrow.",
-                vec!["Paris".into(), "tomorrow".into(), "car".into()],
+                vec!["destination".into(), "day".into(), "time_hour".into(), "time_minute".into(), "travel_method".into()],
+                "I'd like to drive my red car to Paris tomorrow at noon.",
+                vec!["Paris".into(), "tomorrow".into(), 12.into(), 0.into(), "car".into()],
             ),
             InstructionDefinition::new(
                 "order_food",
@@ -248,9 +248,10 @@ mod tests {
 
         // Parse each instruction in INSTRUCTIONS and print the resulting function calls
         for instruction in INSTRUCTIONS {
+            // Parse the instruction
             let parsed_instruction = instructor.parse_instruction(instruction).unwrap();
             println!(
-                "Instruction:\n{}\n\nParsed instruction:\nName: {}\nArgs: {:?}\n\n\n",
+                "Instruction:\n{}\n\nParsed instruction:\nName: {}\nArgs: {:#?}\n\n\n",
                 instruction, parsed_instruction.name, parsed_instruction.args
             );
         }
