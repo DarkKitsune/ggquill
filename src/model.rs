@@ -129,7 +129,7 @@ impl Model {
     pub(crate) fn detokenize(&self, tokens: impl AsRef<[u32]>) -> String {
         // Decode the tokens into a string
         self.tokenizer
-            .decode(tokens.as_ref(), true)
+            .decode(tokens.as_ref(), false)
             .map_err(E::msg)
             .unwrap()
     }

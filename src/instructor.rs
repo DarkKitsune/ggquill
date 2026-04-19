@@ -116,14 +116,8 @@ impl Instructor {
 
         // Extra data has the instruction definitions.
         let extra_data = json_map! {
-            "instruction_definitions" => instruction_definitions_str,
+            "instruction_definitions" => instruction_definitions_str.as_str(),
         };
-
-        println!("System prompt for instructor:\n{}", Self::SYSTEM_PROMPT);
-        println!(
-            "Instruction definitions for instructor:\n{}",
-            instruction_definitions_str
-        );
 
         let chat = Chat::new(
             model,

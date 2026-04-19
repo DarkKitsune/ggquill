@@ -34,7 +34,7 @@ impl InferParams {
     /// This is good for general use and is a good starting point for most tasks.
     pub fn new_balanced() -> Self {
         Self {
-            temperature: 0.5,
+            temperature: 0.45,
             repeat_penalty: 1.05,
             repeat_scan_length: 48,
         }
@@ -86,7 +86,7 @@ impl InferCompletion<'_> {
         self.end_sequence
     }
 
-    /// Get the complete result as it was generated. Use `unwrap` if you just want a reference.
+    /// Get the complete result as it was generated. Use `unwrap` if you want the owned String.
     pub fn result(&self) -> &str {
         &self.text
     }
@@ -102,13 +102,13 @@ pub struct InferIter {
     model: Model,
     device: Device,
     tokens: TokenString,
+    pending_tokens: Option<TokenString>,
     vocab_size: usize,
     logits_processor: LogitsProcessor,
     repeat_penalty: f32,
     repeat_scan_length: usize,
     eos_token: u32,
     reached_eos: bool,
-    pending_context: String,
     step: usize,
 }
 
@@ -137,14 +137,18 @@ impl InferIter {
             repeat_scan_length: params.repeat_scan_length,
             eos_token,
             reached_eos: false,
-            pending_context: String::new(),
+            pending_tokens: None,
             step: 0,
         }
     }
 
     /// Push some text into the context.
     pub fn push_str(&mut self, text: impl AsRef<str>) {
-        self.pending_context.push_str(text.as_ref());
+        if let Some(pending_tokens) = &mut self.pending_tokens {
+            pending_tokens.push_str(text.as_ref());
+        } else {
+            self.pending_tokens = Some(self.model.tokenize_str(text.as_ref()));
+        }
     }
 
     /// Infer the next token. Returns None if we have reached the end of the response (EOS token).
@@ -156,10 +160,10 @@ impl InferIter {
 
         // Insert the pending context onto self.tokens if it is not empty
         // Also get the size of the inserted text in tokens to calculate the context correctly
-        let context_add = if !self.pending_context.is_empty() {
+        let context_add = if let Some(pending_tokens) = &mut self.pending_tokens {
             let old_len = self.tokens.len();
-            self.tokens.push_str(&self.pending_context);
-            self.pending_context.clear();
+            self.tokens.push(&*pending_tokens);
+            pending_tokens.clear();
             self.tokens.len() - old_len
         } else {
             0
@@ -221,7 +225,7 @@ impl InferIter {
     }
 
     /// Run the iterator until completion or until one of `end_sequences` is generated
-    /// and return everything up to that point as a `String`, as well as the end sequence that was reached
+    /// and return everything up to that point as an `InferCompletion`, as well as the end sequence that was reached
     pub fn complete<'a>(&mut self, end_sequences: &'a [&str]) -> InferCompletion<'a> {
         let mut response = String::new();
         while let Some(token) = self.next_token()
@@ -314,9 +318,11 @@ impl InferIter {
     /// Completely reset the context, starting the iterator over again with the given tokens as the new context.
     pub fn reset(&mut self, new_context: impl IntoTokenString) {
         let new_tokens = self.tokens.model.borrow().tokenize(new_context);
+        if let Some(pending_tokens) = &mut self.pending_tokens {
+            pending_tokens.clear();
+        }
         self.tokens = new_tokens;
         self.reached_eos = false;
-        self.pending_context.clear();
         self.step = 0;
         self.model.clear_cache();
     }
@@ -327,19 +333,20 @@ impl InferIter {
         &self.tokens
     }
 
-    /// Get the full context including any text that has been pushed into the context via `push_str` since the last inference.
+    /// Get the full context including any text that has been pushed into the context since the last inference.
     pub fn full_context(&self) -> TokenString {
         let mut context = self.tokens.clone();
-        if !self.pending_context.is_empty() {
-            context.push_str(&self.pending_context);
+        if let Some(pending_tokens) = self.pending_context() {
+            context.push(pending_tokens);
         }
         context
     }
 
     /// Get the text that has been pushed into the context via `push_str` since the last inference,
     /// and which has not yet been included in any inference context.
-    pub(crate) fn pending_context(&self) -> &str {
-        &self.pending_context
+    /// This may be None if
+    pub(crate) fn pending_context(&self) -> Option<&TokenString> {
+        self.pending_tokens.as_ref()
     }
 
     /// Updates the inference parameters for this InferIter.

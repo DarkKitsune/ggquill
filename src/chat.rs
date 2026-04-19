@@ -2,13 +2,12 @@ use std::fmt::Display;
 
 use crate::data::{JsonMap, JsonValue};
 use crate::model::{MAX_TOKENS, Model};
-use crate::prelude::{InferIter, InferParams, ModelType};
+use crate::prelude::{InferIter, InferParams, ModelType, TokenString};
 
 const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful assistant that tries to help the user with their requests as best as you can. \
     You should always try to be as helpful and informative as possible, while also being concise and clear in your responses. \
     Avoid unnecessary repetition and fluff, and try to get to the point quickly.";
 const COMPRESS_MEMORY_THRESHOLD: usize = MAX_TOKENS / 2;
-const ESTIMATE_CHARACTERS_PER_TOKEN: usize = 4;
 
 /// Represents a chat between user and model.
 pub struct Chat {
@@ -133,7 +132,7 @@ impl Chat {
         mut after_response: impl FnMut(&str, &mut InferIter, Option<&str>) -> Option<R>,
     ) -> Option<(&str, R)> {
         // If the chat history is too long, we want to compress the memory.
-        if self.estimate_token_len() > COMPRESS_MEMORY_THRESHOLD {
+        if self.token_len() > COMPRESS_MEMORY_THRESHOLD {
             self.compress_memory();
         }
 
@@ -185,6 +184,34 @@ impl Chat {
         ))
     }
 
+    /// Add a message more directly by a callback which uses the underlying InferIter to write the message body
+    /// and returns the message content as a string.
+    /// The message written to the InferIter should match the message string returned by the callback, but this is not enforced.
+    pub(crate) fn add_message_with_infer_iter<R: Display>(
+        &mut self,
+        sender: &ChatRole,
+        infer_func: impl FnOnce(&mut InferIter) -> R,
+    ) -> String {
+        // Start message
+        self.infer_iter.push_str(
+            self.model_type
+                .create_chat_message_begin_prompt(sender),
+        );
+
+        // Use callback for message body
+        let message_text = infer_func(&mut self.infer_iter).to_string();
+
+        // End message
+        self.infer_iter.push_str("\n");
+        self.infer_iter
+            .push_str(self.model_type.create_chat_message_end_prompt());
+
+        // Add the message to the chat history
+        let message = ChatMessage::new(sender.clone(), message_text);
+        self.chat_history.push(message);
+        self.chat_history.last().unwrap().content().to_string()
+    }
+    
     /// Get the last message in the chat history, if any.
     pub fn last(&self) -> Option<&ChatMessage> {
         self.chat_history.last()
@@ -201,19 +228,16 @@ impl Chat {
         &self.chat_history
     }
 
-    /// Estimate the token length of the current full chat context.
-    fn estimate_token_len(&self) -> usize {
-        // Start with the InferIter context
-        let mut tokens = self.infer_iter.last_context().len();
-        // Add an estimate for pending context
-        tokens += self.infer_iter.pending_context().len() / ESTIMATE_CHARACTERS_PER_TOKEN;
-
-        tokens
+    /// Get the token length of the current full chat context.
+    fn token_len(&self) -> usize {
+        self.infer_iter.last_context().len() + self.infer_iter.pending_context().map_or(0, |pending| pending.len())
     }
 
     /// Compress the memory of the chat by summarizing the past_memory and half of the chat history together,
     /// storing the summary in past_memory, and then resetting the chat history to just the other half of the chat history.
     fn compress_memory(&mut self) {
+        println!("Compressing memory... Current token length: {}", self.token_len());
+
         // Start with either the long_term_memory or an empty string as the base for the summary prompt
         let mut prompt = self
             .long_term_memory
@@ -270,11 +294,18 @@ impl Chat {
 
         // Reset self to the new state for further conversing
         self.reset(new_system_prompt, new_chat_history, Some(summary));
+
+        println!("Memory compressed. New token length: {}", self.token_len());
     }
 
     /// Update the inference parameters for the chat's InferIter.
     pub fn update_infer_params(&mut self, params: &InferParams) {
         self.infer_iter.update_params(params);
+    }
+
+    /// Get all tokens that make up the chat's context so far.
+    pub fn get_tokens(&self) -> TokenString {
+        self.infer_iter.full_context()
     }
 }
 

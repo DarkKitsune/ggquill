@@ -9,12 +9,55 @@ pub mod model_type;
 pub mod pipeline;
 pub mod prelude;
 pub mod token_string;
+pub mod chat_schema;
+pub mod chat_wrapper;
 
 #[cfg(test)]
 mod tests {
     use std::io::Write;
 
-    use crate::prelude::*;
+    use crate::{chat_wrapper::{ChatWrapper, SimpleChatWrapper}, prelude::*};
+
+    #[test]
+    fn chat_wrapper() {
+        const SEED: u64 = 12345;
+        const TRIVIA_QUESTIONS: &[(&str, &str)] = &[
+            ("What is the boiling point of water?", "humorous"),
+            ("Who won the world series in 2020?", "very crass and aggressive"),
+        ];
+
+        // Create the model
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+
+        // Create the schemas for the chat wrapper
+        // String slices also work as schemas
+        let system_schema = "You are a quiz master who answers trivia questions in the provided tone. \
+            Answer concisely and accurately, and explain your answer further.";
+        let mut input_schema = ChatSchema::new();
+        input_schema.add_text(Some("Question".to_string()), "{input}");
+        input_schema.add_text(Some("Tone".to_string()), "Please answer in a {tone} tone.");
+        let mut output_schema = ChatSchema::new();
+        output_schema.add_text(Some("Answer".to_string()), "{.|!|\n}");
+        output_schema.add_text(Some("Explanation".to_string()), "{}");
+
+        // Create the chat wrapper
+        let mut chat_wrapper = SimpleChatWrapper::new(
+            &mut model,
+            system_schema,
+            input_schema,
+            output_schema,
+        );
+
+        // Get the output for each trivia question and print it
+        for (question, tone) in TRIVIA_QUESTIONS {
+            let input_context = string_map! {
+                "input" => question,
+                "tone" => tone,
+            };
+            let (output, input) = chat_wrapper.get_output(&input_context);
+            println!("Input:\n{}\n\nOutput:\n{}\n\n=====\n\n", input, output);
+        }
+    }
 
     #[test]
     fn pipeline() {
@@ -56,7 +99,7 @@ mod tests {
         // Execute the pipeline on the model for each poem theme and print the poem and summary outputs
         for theme in POEM_THEMES {
             let mut context = json_map! {
-                "theme" => theme,
+                "theme" => *theme,
             };
             pipeline.execute(&mut context);
             let poem = context["poem"].as_str().unwrap();

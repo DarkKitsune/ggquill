@@ -1,0 +1,261 @@
+use std::{collections::HashMap, fmt::Display};
+
+use aho_corasick::AhoCorasick;
+use regex::Match;
+
+use crate::{prelude::InferIter};
+
+pub const INPUT_KEY: &str = "input";
+
+/// Helper function for parsing context keys in the format "{key}" and substituting
+/// them with their JSON values from the context.
+fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> String {
+    // Build the patterns and replacements for the Aho-Corasick algorithm
+    let (patterns, replacements): (Vec<String>, Vec<String>) = context
+        .iter()
+        .map(|(k, v)| (format!("{{{}}}", k), v.clone()))
+        .unzip();
+
+    // Instead of a simple replace we use aho-corasick to find and replace all context keys in one pass
+    let ac = AhoCorasick::new(patterns).unwrap();
+    ac.replace_all(input, &replacements)
+}
+
+/// Helper function for finding context keys in the format "{key}" and returning them as a vector of strings.
+fn find_context_keys<'a>(input: &'a str) -> Vec<Match<'a>> {
+    // Use a regex to find all context keys in the input string
+    let re = regex::Regex::new(r"\{([^}]*)\}").unwrap();
+    re.captures_iter(input)
+        .filter_map(|cap| cap.get(1))
+        .collect()
+}
+
+/// A schema defining the input or output for a chat-based model.
+/// Schemas are made up of `SchemaBlock`s, which are individual components of the schema that define specific parts
+/// of the input or output. Each block contributes to the model input or output in a specific way,
+/// and the combination of blocks defines the overall structure and content of the input or output.
+/// Context keys in the format {key} can usually be used in the text of a block to reference values from the context,
+/// which is passed to the input schema. For the output schema the keys are instead replaced by inference using the key contents as an end sequence.
+pub struct ChatSchema {
+    blocks: Vec<Box<dyn SchemaBlock>>,
+}
+
+impl ChatSchema {
+    /// Creates a new empty schema.
+    pub fn new() -> Self {
+        Self { blocks: Vec::new() }
+    }
+
+    /// Creates a new schema from a vector of blocks.
+    pub fn from_blocks(blocks: Vec<Box<dyn SchemaBlock>>) -> Self {
+        Self { blocks }
+    }
+
+    /// Creates a passthrough input schema which simply represents the input string.
+    pub fn passthrough_input() -> Self {
+        let mut schema = Self::new();
+        schema.add_text(None, format!("{{{}}}", INPUT_KEY));
+        schema
+    }
+
+    /// Creates a passthrough output schema which simply represents the output string.
+    pub fn passthrough_output() -> Self {
+        let mut schema = Self::new();
+        schema.add_text(None, "{}".to_string());
+        schema
+    }
+
+    /// Gets the blocks that make up the schema.
+    pub fn blocks(&self) -> &[Box<dyn SchemaBlock>] {
+        &self.blocks
+    }
+
+    /// Adds a block to the schema.
+    pub fn add_block(&mut self, block: Box<dyn SchemaBlock>) {
+        self.blocks.push(block);
+    }
+
+    /// Add a text block to the schema with the given label and text.
+    /// Also returns a mutable reference to the schema to allow for chaining.
+    pub fn add_text(&mut self, label: Option<String>, text: impl Display) -> &mut Self {
+        self.add_block(Box::new(TextBlock::new(label, text)));
+        self
+    }
+
+    /// Writes the schema to an InferIter as an input, using the given context map to substitute any context keys in the blocks.
+    /// Also returns the final input string as written to the InferIter.
+    pub fn write_input(&self, iter: &mut InferIter, context: &HashMap<String, String>) -> String {
+        let mut written_so_far = String::new();
+        for (i, block) in self.blocks.iter().enumerate() {
+            // Write each block to the InferIter with context substitution, and add a newline after each block (except the last one)
+            written_so_far.push_str(&block.write_input(iter, context));
+            if i < self.blocks.len() - 1 {
+                iter.push_str("\n\n");
+                written_so_far.push_str("\n\n");
+            }
+        }
+
+        written_so_far
+    }
+
+    /// Writes the schema to an InferIter as an output.
+    pub fn write_output(&self, iter: &mut InferIter) -> String {
+        let mut written_so_far = String::new();
+        for (i, block) in self.blocks.iter().enumerate() {
+            // Write each block to the InferIter, and add a newline after each block (except the last one)
+            written_so_far.push_str(&block.write_output(iter));
+            if i < self.blocks.len() - 1 {
+                iter.push_str("\n\n");
+                written_so_far.push_str("\n\n");
+            }
+        }
+
+        written_so_far
+    }
+
+    /// Converts the schema to a string as an input, using the given context map to substitute any context keys in the blocks.
+    pub fn to_input_string(&self, context: &HashMap<String, String>) -> String {
+        self.blocks
+            .iter()
+            .map(|block| block.to_input_string(context))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+}
+
+impl Default for ChatSchema {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clone for ChatSchema {
+    fn clone(&self) -> Self {
+        Self {
+            blocks: self.blocks.iter().map(|b| b.clone_box()).collect(),
+        }
+    }
+}
+
+impl From<&str> for ChatSchema {
+    fn from(s: &str) -> Self {
+        let mut schema = ChatSchema::new();
+        schema.add_text(None, s);
+        schema
+    }
+}
+
+/// A trait representing a block of the schema. This can be implemented by different types of blocks to define their behavior and content.
+pub trait SchemaBlock {
+    /// Clones the block. This is needed because the schema contains trait objects which are not clonable by default.
+    fn clone_box(&self) -> Box<dyn SchemaBlock>;
+
+    /// The optional label of the block, which acts as a heading or identifier for the block in the schema.
+    fn label(&self) -> Option<&str> {
+        None
+    }
+    
+    /// Converts the block to a raw string for input or output without substituting context keys.
+    fn to_raw_string(&self) -> String;
+
+    /// Writes the block to an InferIter as an input after substituting context map keys, using the given context map.
+    fn write_input(&self, iter: &mut InferIter, context: &HashMap<String, String>) -> String {
+        let raw = self.to_raw_string();
+        let substituted = substitute_context_keys(&raw, context);
+        iter.push_str(&substituted);
+        substituted
+    }
+
+    // Converts the block to an input string after substituting context map keys, using the given context map.
+    fn to_input_string(&self, context: &HashMap<String, String>) -> String {
+        substitute_context_keys(&self.to_raw_string(), context)
+    }
+    
+    /// Writes the block to an InferIter, using the given context map.
+    fn write_output(&self, iter: &mut InferIter) -> String {
+        let mut written_so_far = String::new();
+        let raw = self.to_raw_string();
+
+        // Find all keys in the raw string and use them as end sequences for inference, then replace them with the inferred values
+        let keys = find_context_keys(&raw);
+
+        // If there are no keys we can just push the raw string to the output
+        if keys.is_empty() {
+            written_so_far.push_str(&raw);
+            iter.push_str(&raw);
+            return written_so_far;
+        }
+
+        // Otherwise write the string up to the each key, then infer until the matching end sequence is found, and repeat until no keys remain.
+        let mut last_index = 0;
+        for key in keys {
+            let start = key.start() - 1; // Include the opening '{'
+            let end = key.end() + 1; // Include the closing '}'
+
+            // Push the string before the key
+            if start > last_index {
+                written_so_far.push_str(&raw[last_index..start]);
+                iter.push_str(&raw[last_index..start]);
+            }
+
+            // Get the end sequence(s) from the key (may be multiple separated by '|')
+            let end_sequences: Vec<&str> = key.as_str().split('|').filter_map(|s| {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }).collect();
+
+            // Infer until the end sequence is found, this will end up in the InferIter anyway so no need to push
+            let inferred = iter.complete(&end_sequences);
+            // Push the end sequence onto the inferred string because it is not normally included
+            let end_sequence = inferred.end_sequence().unwrap_or_default().to_string();
+            let mut inferred = inferred.unwrap();
+            inferred.push_str(&end_sequence);
+            // Also update the output string with the inferred value
+            written_so_far.push_str(&inferred);
+
+            // Update the last index to the end of the key
+            last_index = end;
+        }
+
+        written_so_far
+    }
+}
+
+/// Simply represents a block of text in the schema, which can be used to provide instructions, context, or other information to the model.
+#[derive(Clone)]
+pub struct TextBlock {
+    label: Option<String>,
+    text: String,
+}
+
+impl TextBlock {
+    pub fn new(label: Option<String>, text: impl Display) -> Self {
+        Self {
+            label,
+            text: text.to_string(),
+        }
+    }
+}
+
+impl SchemaBlock for TextBlock {
+    fn clone_box(&self) -> Box<dyn SchemaBlock> {
+        Box::new(self.clone())
+    }
+
+    fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    fn to_raw_string(&self) -> String {
+        let label_part = if let Some(label) = &self.label {
+            format!("**{}:**\n", label)
+        } else {
+            String::new()
+        };
+        format!("{}{}", label_part, self.text)
+    }
+}

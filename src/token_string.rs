@@ -54,6 +54,11 @@ impl TokenString {
             self.tokens.drain(0..excess);
         }
     }
+    
+    /// Clear the token string
+    pub fn clear(&mut self) {
+        self.tokens.clear();
+    }
 
     /// Get the number of tokens
     pub fn len(&self) -> usize {
@@ -154,6 +159,12 @@ impl IntoTokenString for &String {
     }
 }
 
+impl IntoTokenString for &mut String {
+    fn into_token_string(self, model: &Model) -> TokenString {
+        model.tokenize_str(self)
+    }
+}
+
 impl IntoTokenString for TokenString {
     // TODO: this may break if multiple different models are supported later
     fn into_token_string(self, _: &Model) -> TokenString {
@@ -162,6 +173,13 @@ impl IntoTokenString for TokenString {
 }
 
 impl IntoTokenString for &TokenString {
+    // TODO: this may break if multiple different models are supported later
+    fn into_token_string(self, _: &Model) -> TokenString {
+        self.clone()
+    }
+}
+
+impl IntoTokenString for &mut TokenString {
     // TODO: this may break if multiple different models are supported later
     fn into_token_string(self, _: &Model) -> TokenString {
         self.clone()
