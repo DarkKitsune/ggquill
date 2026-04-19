@@ -1,6 +1,11 @@
 use std::collections::HashMap;
 
-use crate::{chat::{Chat, ChatRole}, chat_schema::{INPUT_KEY, ChatSchema}, model::Model, prelude::InferParams};
+use crate::{
+    chat::{Chat, ChatRole},
+    chat_schema::ChatSchema,
+    model::Model,
+    prelude::InferParams,
+};
 
 /// Uses schema to define the structure of the input and output for chat-based interactions with a model.
 pub trait ChatWrapper {
@@ -26,21 +31,14 @@ pub trait ChatWrapper {
         let chat = self.chat_mut();
 
         // Add input message
-        let input = chat
-            .add_message_with_infer_iter(
-                &ChatRole::User,
-                |infer_iter| {
-                    input_schema.write_input(infer_iter, input_context)
-                },
-            );
+        let input = chat.add_message_with_infer_iter(&ChatRole::User, |infer_iter| {
+            input_schema.write_input(infer_iter, input_context)
+        });
 
         // Infer the output message using the output schema
-        let output = chat.add_message_with_infer_iter(
-            &ChatRole::Assistant,
-            |infer_iter| {
-                output_schema.write_output(infer_iter)
-            },
-        );
+        let output = chat.add_message_with_infer_iter(&ChatRole::Assistant, |infer_iter| {
+            output_schema.write_output(infer_iter)
+        });
 
         (output, input)
     }
@@ -56,7 +54,12 @@ pub struct SimpleChatWrapper {
 
 impl SimpleChatWrapper {
     /// Creates a new SimpleChatWrapper with the provided model and schemas.
-    pub fn new(model: &mut Model, system_schema: impl Into<ChatSchema>, input_schema: impl Into<ChatSchema>, output_schema: impl Into<ChatSchema>) -> Self {
+    pub fn new(
+        model: &mut Model,
+        system_schema: impl Into<ChatSchema>,
+        input_schema: impl Into<ChatSchema>,
+        output_schema: impl Into<ChatSchema>,
+    ) -> Self {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
         let output_schema = output_schema.into();

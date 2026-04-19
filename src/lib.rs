@@ -1,5 +1,7 @@
 pub mod actor;
 pub mod chat;
+pub mod chat_schema;
+pub mod chat_wrapper;
 pub mod data;
 pub mod inference;
 pub mod instructor;
@@ -9,21 +11,25 @@ pub mod model_type;
 pub mod pipeline;
 pub mod prelude;
 pub mod token_string;
-pub mod chat_schema;
-pub mod chat_wrapper;
 
 #[cfg(test)]
 mod tests {
     use std::io::Write;
 
-    use crate::{chat_wrapper::{ChatWrapper, SimpleChatWrapper}, prelude::*};
+    use crate::{
+        chat_wrapper::{ChatWrapper, SimpleChatWrapper},
+        prelude::*,
+    };
 
     #[test]
     fn chat_wrapper() {
         const SEED: u64 = 12345;
         const TRIVIA_QUESTIONS: &[(&str, &str)] = &[
             ("What is the boiling point of water?", "humorous"),
-            ("Who won the world series in 2020?", "very crass and aggressive"),
+            (
+                "Who won the world series in 2020?",
+                "very crass and aggressive",
+            ),
         ];
 
         // Create the model
@@ -41,12 +47,8 @@ mod tests {
         output_schema.add_text(Some("Explanation".to_string()), "{}");
 
         // Create the chat wrapper
-        let mut chat_wrapper = SimpleChatWrapper::new(
-            &mut model,
-            system_schema,
-            input_schema,
-            output_schema,
-        );
+        let mut chat_wrapper =
+            SimpleChatWrapper::new(&mut model, system_schema, input_schema, output_schema);
 
         // Get the output for each trivia question and print it
         for (question, tone) in TRIVIA_QUESTIONS {
@@ -271,9 +273,21 @@ mod tests {
             ),
             InstructionDefinition::new(
                 "travel",
-                vec!["destination".into(), "day".into(), "time_hour".into(), "time_minute".into(), "travel_method".into()],
+                vec![
+                    "destination".into(),
+                    "day".into(),
+                    "time_hour".into(),
+                    "time_minute".into(),
+                    "travel_method".into(),
+                ],
                 "I'd like to drive my red car to Paris tomorrow at noon.",
-                vec!["Paris".into(), "tomorrow".into(), 12.into(), 0.into(), "car".into()],
+                vec![
+                    "Paris".into(),
+                    "tomorrow".into(),
+                    12.into(),
+                    0.into(),
+                    "car".into(),
+                ],
             ),
             InstructionDefinition::new(
                 "order_food",

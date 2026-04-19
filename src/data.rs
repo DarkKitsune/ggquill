@@ -25,7 +25,7 @@ macro_rules! string_map {
                 map.insert($key.to_string(), $value.to_string());
             )*
             map
-        
+
         }
     };
 }

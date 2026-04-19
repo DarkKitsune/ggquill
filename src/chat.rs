@@ -193,10 +193,8 @@ impl Chat {
         infer_func: impl FnOnce(&mut InferIter) -> R,
     ) -> String {
         // Start message
-        self.infer_iter.push_str(
-            self.model_type
-                .create_chat_message_begin_prompt(sender),
-        );
+        self.infer_iter
+            .push_str(self.model_type.create_chat_message_begin_prompt(sender));
 
         // Use callback for message body
         let message_text = infer_func(&mut self.infer_iter).to_string();
@@ -211,7 +209,7 @@ impl Chat {
         self.chat_history.push(message);
         self.chat_history.last().unwrap().content().to_string()
     }
-    
+
     /// Get the last message in the chat history, if any.
     pub fn last(&self) -> Option<&ChatMessage> {
         self.chat_history.last()
@@ -230,13 +228,20 @@ impl Chat {
 
     /// Get the token length of the current full chat context.
     fn token_len(&self) -> usize {
-        self.infer_iter.last_context().len() + self.infer_iter.pending_context().map_or(0, |pending| pending.len())
+        self.infer_iter.last_context().len()
+            + self
+                .infer_iter
+                .pending_context()
+                .map_or(0, |pending| pending.len())
     }
 
     /// Compress the memory of the chat by summarizing the past_memory and half of the chat history together,
     /// storing the summary in past_memory, and then resetting the chat history to just the other half of the chat history.
     fn compress_memory(&mut self) {
-        println!("Compressing memory... Current token length: {}", self.token_len());
+        println!(
+            "Compressing memory... Current token length: {}",
+            self.token_len()
+        );
 
         // Start with either the long_term_memory or an empty string as the base for the summary prompt
         let mut prompt = self

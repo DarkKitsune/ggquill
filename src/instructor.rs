@@ -210,10 +210,18 @@ impl Instructor {
                         let arg_value = arg_response.trim().to_string();
                         let arg_value = match param_type {
                             "string" => JsonValue::String(arg_value.to_string()),
-                            "number" => JsonValue::Number(arg_value.parse().expect("Failed to parse number argument")),
-                            "boolean" => JsonValue::Bool(arg_value.parse().expect("Failed to parse boolean argument")),
-                            "array" => unimplemented!("Array argument parsing not implemented (yet)"),
-                            "object" => unimplemented!("Object argument parsing not implemented (yet)"),
+                            "number" => JsonValue::Number(
+                                arg_value.parse().expect("Failed to parse number argument"),
+                            ),
+                            "boolean" => JsonValue::Bool(
+                                arg_value.parse().expect("Failed to parse boolean argument"),
+                            ),
+                            "array" => {
+                                unimplemented!("Array argument parsing not implemented (yet)")
+                            }
+                            "object" => {
+                                unimplemented!("Object argument parsing not implemented (yet)")
+                            }
                             _ => JsonValue::String(arg_value),
                         };
                         args.insert(param_name.clone(), arg_value);
@@ -222,7 +230,7 @@ impl Instructor {
                     Some((instruction_def, args))
                 },
             ) {
-                 break (instruction_def, args);
+                break (instruction_def, args);
             }
 
             // If we got here then we failed to parse an instruction

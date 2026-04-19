@@ -123,8 +123,11 @@ impl InferIter {
         params: &InferParams,
     ) -> Self {
         // Create logits processor
-        let logits_processor =
-            LogitsProcessor::new(model.next_seed(), Some(params.temperature), Some(Self::TOP_P));
+        let logits_processor = LogitsProcessor::new(
+            model.next_seed(),
+            Some(params.temperature),
+            Some(Self::TOP_P),
+        );
 
         let eos_token = model.eos_token();
         Self {
@@ -351,7 +354,11 @@ impl InferIter {
 
     /// Updates the inference parameters for this InferIter.
     pub fn update_params(&mut self, params: &InferParams) {
-        self.logits_processor = LogitsProcessor::new(self.model.next_seed(), Some(params.temperature), Some(Self::TOP_P));
+        self.logits_processor = LogitsProcessor::new(
+            self.model.next_seed(),
+            Some(params.temperature),
+            Some(Self::TOP_P),
+        );
         self.repeat_penalty = params.repeat_penalty;
         self.repeat_scan_length = params.repeat_scan_length;
     }

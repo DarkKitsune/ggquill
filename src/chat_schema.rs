@@ -3,9 +3,9 @@ use std::{collections::HashMap, fmt::Display};
 use aho_corasick::AhoCorasick;
 use regex::Match;
 
-use crate::{prelude::InferIter};
+use crate::prelude::InferIter;
 
-pub const INPUT_KEY: &str = "input";
+pub const SCHEMA_PASSTHROUGH_INPUT: &str = "input";
 
 /// Helper function for parsing context keys in the format "{key}" and substituting
 /// them with their JSON values from the context.
@@ -54,7 +54,7 @@ impl ChatSchema {
     /// Creates a passthrough input schema which simply represents the input string.
     pub fn passthrough_input() -> Self {
         let mut schema = Self::new();
-        schema.add_text(None, format!("{{{}}}", INPUT_KEY));
+        schema.add_text(None, format!("{{{}}}", SCHEMA_PASSTHROUGH_INPUT));
         schema
     }
 
@@ -154,7 +154,7 @@ pub trait SchemaBlock {
     fn label(&self) -> Option<&str> {
         None
     }
-    
+
     /// Converts the block to a raw string for input or output without substituting context keys.
     fn to_raw_string(&self) -> String;
 
@@ -170,7 +170,7 @@ pub trait SchemaBlock {
     fn to_input_string(&self, context: &HashMap<String, String>) -> String {
         substitute_context_keys(&self.to_raw_string(), context)
     }
-    
+
     /// Writes the block to an InferIter, using the given context map.
     fn write_output(&self, iter: &mut InferIter) -> String {
         let mut written_so_far = String::new();
@@ -199,14 +199,18 @@ pub trait SchemaBlock {
             }
 
             // Get the end sequence(s) from the key (may be multiple separated by '|')
-            let end_sequences: Vec<&str> = key.as_str().split('|').filter_map(|s| {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed)
-                }
-            }).collect();
+            let end_sequences: Vec<&str> = key
+                .as_str()
+                .split('|')
+                .filter_map(|s| {
+                    let trimmed = s.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed)
+                    }
+                })
+                .collect();
 
             // Infer until the end sequence is found, this will end up in the InferIter anyway so no need to push
             let inferred = iter.complete(&end_sequences);

@@ -54,7 +54,7 @@ impl TokenString {
             self.tokens.drain(0..excess);
         }
     }
-    
+
     /// Clear the token string
     pub fn clear(&mut self) {
         self.tokens.clear();

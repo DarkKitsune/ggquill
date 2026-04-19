@@ -1,13 +1,13 @@
 pub use crate::actor::Actor;
 pub use crate::chat::{Chat, ChatMessage, ChatRole};
-pub use crate::chat_schema::{ChatSchema};
+pub use crate::chat_schema::{ChatSchema, SCHEMA_PASSTHROUGH_INPUT};
 pub use crate::data::{JsonMap, JsonValue};
 pub use crate::inference::{InferIter, InferParams};
 pub use crate::instructor::{InstructionDefinition, Instructor, ParsedInstruction};
 pub use crate::joiner::Joiner;
-pub use crate::{json_map, string_map};
 pub use crate::model::Model;
 pub use crate::model_type::{ModelSize, ModelType};
 pub use crate::pipeline::Pipeline;
 pub use crate::token_string::{IntoTokenString, TokenString};
+pub use crate::{json_map, string_map};
 pub use serde_json::json;
