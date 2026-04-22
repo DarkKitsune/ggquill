@@ -5,6 +5,7 @@ use anyhow::{Error as E, Result};
 
 use candle_transformers::models::qwen2::{Config as Qwen2Config, ModelForCausalLM as Qwen2};
 use candle_transformers::models::qwen3::{Config as Qwen3Config, ModelForCausalLM as Qwen3};
+use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
@@ -45,9 +46,6 @@ impl Model {
         let model_repo = model_type.model_repo();
         let tokenizer_repo = model_type.tokenizer_repo();
 
-        // Create model config
-        let config = model_type.create_config(&model_repo, &api);
-
         // Get the tokenizer and model files
         let tokenizer_filename = tokenizer_repo
             .file_paths(&[model_type.tokenizer_json_name()], &api)
@@ -59,11 +57,19 @@ impl Model {
             .map(|name| model_repo.file_paths(&[name], &api).pop().unwrap())
             .collect::<Vec<_>>();
 
-        // Create VarBuilder
-        let vb = unsafe { VarBuilder::from_mmaped_safetensors(&model_filenames, dtype, &device)? };
+        let pipeline = if model_type.is_gguf_quantized() {
+            model_type.create_gguf_quantized_pipeline(&model_filenames[0], &device)
+        }
+        else {
+            // Create model config
+            let config = model_type.create_config(&model_repo, &api);
 
-        // Create pipeline
-        let pipeline = model_type.create_pipeline(&config, vb);
+            // Create VarBuilder
+            let vb = unsafe { VarBuilder::from_mmaped_safetensors(&model_filenames, dtype, &device)? };
+
+            // Create pipeline
+            model_type.create_pipeline(&config, vb)
+        };
 
         // Create tokenizer
         let tokenizer = Tokenizer::from_file(tokenizer_filename).map_err(E::msg)?;
@@ -198,6 +204,7 @@ impl Model {
 pub enum ModelPipeline {
     Qwen2(Qwen2),
     Qwen3(Qwen3),
+    QuantizedQwen3(QuantizedQwen3),
 }
 
 impl ModelPipeline {
@@ -206,6 +213,7 @@ impl ModelPipeline {
         match self {
             ModelPipeline::Qwen2(qwen2) => qwen2.forward(xs, start_pos).unwrap(),
             ModelPipeline::Qwen3(qwen3) => qwen3.forward(xs, start_pos).unwrap(),
+            ModelPipeline::QuantizedQwen3(qwen3) => qwen3.forward(xs, start_pos).unwrap(),
         }
     }
 
@@ -214,6 +222,7 @@ impl ModelPipeline {
         match self {
             ModelPipeline::Qwen2(qwen2) => qwen2.clear_kv_cache(),
             ModelPipeline::Qwen3(qwen3) => qwen3.clear_kv_cache(),
+            ModelPipeline::QuantizedQwen3(qwen3) => qwen3.clear_kv_cache(),
         }
     }
 }

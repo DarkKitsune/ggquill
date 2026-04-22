@@ -33,7 +33,7 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
 
         // Create the schemas for the chat wrapper
         // String slices also work as schemas
@@ -43,8 +43,8 @@ mod tests {
         input_schema.add_text(Some("Question".to_string()), "{input}");
         input_schema.add_text(Some("Tone".to_string()), "Please answer in a {tone} tone.");
         let mut output_schema = ChatSchema::new();
-        output_schema.add_text(Some("Answer".to_string()), "{.|!|\n}");
-        output_schema.add_text(Some("Explanation".to_string()), "{}");
+        output_schema.add_text(Some("Answer".to_string()), "\"{\"}");
+        output_schema.add_text(Some("Explanation".to_string()), "\"{\"}");
 
         // Create the chat wrapper
         let mut chat_wrapper =
@@ -71,7 +71,7 @@ mod tests {
         ];
 
         // Create the model and pipeline
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
         let mut pipeline = Pipeline::new(&mut model);
 
         // Add a system propmt instructing the model to act as a poet
@@ -119,7 +119,7 @@ mod tests {
         const CONVERSATION_TURNS: usize = 14;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
 
         // Start a chat
         let mut chat = Chat::new(
@@ -155,7 +155,7 @@ mod tests {
         const SEED: u64 = 13579;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
 
         let mut prediction = model.predict_next(
             "Here is my character bio:\nName: Jessie\nAge: 19\nClass: Archer",
@@ -217,7 +217,7 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
 
         // Create a joiner
         let mut joiner = Joiner::new(&mut model);
@@ -233,7 +233,7 @@ mod tests {
         const SEED: u64 = 547845;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
 
         // Generate a story
         let mut story = "There was once".to_string();
@@ -257,7 +257,7 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
 
         // Define some instruction definitions for the instructor to learn from
         let instruction_definitions = vec![

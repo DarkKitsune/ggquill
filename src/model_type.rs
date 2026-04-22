@@ -1,10 +1,12 @@
 use std::fmt::Display;
 use std::path::PathBuf;
 
-use candle_core::{DType, Tensor};
+use candle_core::quantized::gguf_file;
+use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::qwen2::ModelForCausalLM as Qwen2;
 use candle_transformers::models::qwen3::ModelForCausalLM as Qwen3;
+use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use hf_hub::api::sync::Api;
 
 use crate::chat::{ChatMessage, ChatRole};
@@ -28,6 +30,7 @@ pub enum ModelSize {
 pub enum ModelType {
     Qwen25Instruct,
     Qwen3(ModelSize),
+    Qwen3InstructQuantized,
     Qwen3InstructAbl,
     Qwen3Special,
 }
@@ -38,24 +41,20 @@ impl ModelType {
         match self {
             ModelType::Qwen25Instruct
             | ModelType::Qwen3(_)
+            | ModelType::Qwen3InstructQuantized
             | ModelType::Qwen3InstructAbl
             | ModelType::Qwen3Special => true,
         }
     }
 
-    /// Returns true if this model type supports "thinking" functionality.
-    pub fn can_think(&self) -> bool {
-        matches!(self, ModelType::Qwen25Instruct | ModelType::Qwen3(_))
+    /// Returns true if this model requires the think block to be present regardless.
+    pub fn must_use_think(&self) -> bool {
+        matches!(self, ModelType::Qwen3(_) | ModelType::Qwen3InstructQuantized)
     }
 
-    /// Returns true if this model requires the think tag to be present regardless.
-    pub fn must_think(&self) -> bool {
-        matches!(self, ModelType::Qwen3(_))
-    }
-
-    /// Returns true if this model needs "/think " in the prompt to enable thinking.
-    pub fn use_think_in_prompt(&self) -> bool {
-        matches!(self, ModelType::Qwen3(_))
+    /// Returns true if this is a GGUF quantized model type, which requires special handling
+    pub fn is_gguf_quantized(&self) -> bool {
+        matches!(self, ModelType::Qwen3InstructQuantized)
     }
 
     pub fn model_repo(&self) -> ModelRepo {
@@ -66,6 +65,7 @@ impl ModelType {
                 ModelSize::Medium => ModelRepo::hub("Qwen/Qwen3-4B"),
                 ModelSize::Large => ModelRepo::hub("Qwen/Qwen3-8B"),
             },
+            ModelType::Qwen3InstructQuantized => ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF"),
             ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
             ModelType::Qwen3InstructAbl => {
                 ModelRepo::hub("Goekdeniz-Guelmez/Josiefied-Qwen3-4B-abliterated-v2")
@@ -74,7 +74,10 @@ impl ModelType {
     }
 
     pub fn tokenizer_repo(&self) -> ModelRepo {
-        self.model_repo()
+        match self {
+            ModelType::Qwen3InstructQuantized => ModelRepo::hub("Qwen/Qwen3-14B"),
+            _ => self.model_repo(),
+        }
     }
 
     pub fn tokenizer_json_name(&self) -> &'static str {
@@ -101,6 +104,7 @@ impl ModelType {
                     "model-00005-of-00005.safetensors",
                 ],
             },
+            ModelType::Qwen3InstructQuantized => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q4_K_M.gguf"],
             ModelType::Qwen3Special | ModelType::Qwen3InstructAbl => &[
                 "model-00001-of-00002.safetensors",
                 "model-00002-of-00002.safetensors",
@@ -122,6 +126,9 @@ impl ModelType {
                 let config = serde_json::from_str(&config).unwrap();
                 DynConfig::Qwen3(config)
             }
+            ModelType::Qwen3InstructQuantized => {
+                unreachable!("GGUF quantized models should not use create_config")
+            }
         }
     }
 
@@ -134,6 +141,21 @@ impl ModelType {
             ModelType::Qwen3(_) | ModelType::Qwen3Special | ModelType::Qwen3InstructAbl => {
                 ModelPipeline::Qwen3(Qwen3::new(config.as_qwen3().unwrap(), var).unwrap())
             }
+            ModelType::Qwen3InstructQuantized => {
+                unreachable!("GGUF quantized models should not use create_pipeline")
+            }
+        }
+    }
+
+    /// Create a pipeline for a GGUF quantized model of this type, which requires special handling.
+    pub fn create_gguf_quantized_pipeline(&self, model_path: &PathBuf, device: &Device) -> ModelPipeline {
+        match self {
+            ModelType::Qwen3InstructQuantized => {
+                let mut reader = std::fs::File::open(model_path).unwrap();
+                let content = gguf_file::Content::read(&mut reader).unwrap();
+                ModelPipeline::QuantizedQwen3(QuantizedQwen3::from_gguf(content, &mut reader, device).unwrap())
+            }
+            _ => unreachable!("Only GGUF quantized models should use create_gguf_quantized_pipeline"),
         }
     }
 
@@ -142,6 +164,7 @@ impl ModelType {
         match self {
             ModelType::Qwen25Instruct
             | ModelType::Qwen3(_)
+            | ModelType::Qwen3InstructQuantized
             | ModelType::Qwen3Special
             | ModelType::Qwen3InstructAbl => {
                 // Process logits for Qwen3 model
@@ -165,13 +188,6 @@ impl ModelType {
     ) -> String {
         let mut prompt = String::new();
 
-        // For now we just panic if thinking is required
-        if self.must_think() {
-            unimplemented!(
-                "ModelType::create_chat_prompt does not yet support models that require thinking"
-            )
-        }
-
         // Add the system prompt to the system section
         prompt.push_str(&format!(
             "<|im_start|>system\n{}\n",
@@ -194,13 +210,15 @@ impl ModelType {
             match message.sender() {
                 ChatRole::User => {
                     prompt.push_str(&format!(
-                        "<|im_start|>user\n{}\n<|im_end|>\n",
+                        "<|im_start|>user\n{}{}\n<|im_end|>\n",
+                        if self.must_use_think() { "/no_think " } else { "" },
                         message.content()
                     ));
                 }
                 ChatRole::Assistant => {
                     prompt.push_str(&format!(
-                        "<|im_start|>assistant\n{}\n<|im_end|>\n",
+                        "<|im_start|>assistant\n{}{}\n<|im_end|>\n",
+                        if self.must_use_think() { "<think>\n\n</think>\n" } else { "" },
                         message.content()
                     ));
                 }
@@ -218,7 +236,24 @@ impl ModelType {
     }
 
     pub fn create_chat_message_begin_prompt(&self, sender: &ChatRole) -> String {
-        format!("<|im_start|>{}\n", self.chat_role_name(sender))
+        let mut prompt = format!("<|im_start|>{}\n", self.chat_role_name(sender));
+        match sender {
+            // If this is the user and we must include the think block, then we include the /no_think command in the prompt
+            ChatRole::User => {
+                if self.must_use_think() {
+                    prompt.push_str("/no_think ");
+                }
+            }
+            // If this is the assistant and we must think, then we need to include the empty think block
+            ChatRole::Assistant => {
+                if self.must_use_think() {
+                    prompt.push_str("<think>\n\n</think>\n");
+                }
+            }
+            ChatRole::Other(_) => {}
+        }
+
+        prompt
     }
 
     pub fn create_chat_message_end_prompt(&self) -> String {

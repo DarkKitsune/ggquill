@@ -1,11 +1,37 @@
 use std::collections::HashMap;
 
-use crate::{
-    chat::{Chat, ChatRole},
-    chat_schema::ChatSchema,
-    model::Model,
-    prelude::InferParams,
-};
+use crate::prelude::*;
+
+/// Simulates a chat conversation by plugging given input contexts and corresponding outputs into the schemas.
+pub fn create_example_chat_history(
+    input_schema: &ChatSchema,
+    output_schema: &ChatSchema,
+    inputs: &[impl AsRef<HashMap<String, String>>],
+    outputs: &[&[impl AsRef<str>]],
+) -> Vec<ChatMessage> {
+    let mut input_messages = Vec::new();
+    let mut output_messages = Vec::new();
+
+    // Populate the input messages
+    for input_context in inputs {
+        let input_context = input_context.as_ref();
+        let input_message = ChatMessage::new(ChatRole::User, input_schema.to_input_string(input_context));
+        input_messages.push(input_message);
+    }
+
+    // Populate the output messages
+    for outputs in outputs {
+        let output_message = ChatMessage::new(ChatRole::Assistant, output_schema.to_output_string(outputs));
+        output_messages.push(output_message);
+    }
+
+    // Interleave the input and output messages to create the chat history
+    input_messages
+        .into_iter()
+        .zip(output_messages)
+        .flat_map(|(input_msg, output_msg)| vec![input_msg, output_msg])
+        .collect()
+}
 
 /// Uses schema to define the structure of the input and output for chat-based interactions with a model.
 pub trait ChatWrapper {
@@ -13,8 +39,6 @@ pub trait ChatWrapper {
     fn infer_params(&self) -> InferParams {
         InferParams::new_balanced()
     }
-    /// Gets the system schema for the chat wrapper, which defines the structure of the system prompt.
-    fn system_schema(&self) -> &ChatSchema;
     /// Gets the input schema for the chat wrapper, which defines the structure of the user messages.
     fn input_schema(&self) -> &ChatSchema;
     /// Gets the output schema for the chat wrapper, which defines the structure of the assistant messages.
@@ -47,7 +71,6 @@ pub trait ChatWrapper {
 /// A simple implementation of ChatWrapper that applies the given schemas directly without any additional logic.
 pub struct SimpleChatWrapper {
     chat: Chat,
-    system_schema: ChatSchema,
     input_schema: ChatSchema,
     output_schema: ChatSchema,
 }
@@ -73,7 +96,6 @@ impl SimpleChatWrapper {
 
         Self {
             chat,
-            system_schema,
             input_schema,
             output_schema,
         }
@@ -81,10 +103,6 @@ impl SimpleChatWrapper {
 }
 
 impl ChatWrapper for SimpleChatWrapper {
-    fn system_schema(&self) -> &ChatSchema {
-        &self.system_schema
-    }
-
     fn input_schema(&self) -> &ChatSchema {
         &self.input_schema
     }

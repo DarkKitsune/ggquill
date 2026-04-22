@@ -121,6 +121,61 @@ impl ChatSchema {
             .collect::<Vec<_>>()
             .join("\n\n")
     }
+
+    /// Converts the schema to a string as an output, using the given strings to substitute any context keys in the blocks,
+    /// rather than inferring.
+    pub fn to_output_string(&self, substitutions: &[impl AsRef<str>]) -> String {
+        let mut written_so_far = String::new();
+        for block in self.blocks.iter() {
+            let raw = block.to_raw_string();
+            let keys = find_context_keys(&raw);
+
+            // If there are no keys we can just push the raw string to the output
+            if keys.is_empty() {
+                written_so_far.push_str(&raw);
+                continue;
+            }
+
+            // Otherwise substitute the keys with the provided substitutions in order
+            let mut last_index = 0;
+            for (i, key) in keys.iter().enumerate() {
+                let start = key.start() - 1; // Include the opening '{'
+                let end = key.end() + 1; // Include the closing '}'
+
+                // Push the string before the key
+                if start > last_index {
+                    written_so_far.push_str(&raw[last_index..start]);
+                }
+
+                // Substitute the key with the corresponding substitution
+                if i < substitutions.len() {
+                    let substitution = substitutions[i].as_ref();
+                    written_so_far.push_str(substitution);
+
+                    // Get the first end sequence from the key, if any
+                    let end_sequence = key.as_str().split('|').next().unwrap_or("").trim();
+                    
+                    // If the end sequence is not empty and not already included at the end of the substitution, add it to the substitution
+                    if !end_sequence.is_empty() && !substitution.ends_with(end_sequence) {
+                        written_so_far.push_str(end_sequence);
+                    }
+                } else {
+                    // If there are more keys than substitutions, just keep the key as is
+                    written_so_far.push_str(&raw[start..end]);
+                }
+
+                // Update the last index to the end of the key
+                last_index = end;
+            }
+
+            // Push any remaining string after the last key
+            if last_index < raw.len() {
+                written_so_far.push_str(&raw[last_index..]);
+            }
+        }
+
+        written_so_far
+    }
 }
 
 impl Default for ChatSchema {

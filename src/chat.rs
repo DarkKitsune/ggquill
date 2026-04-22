@@ -353,7 +353,7 @@ impl Display for ChatMessage {
 }
 
 /// Represents the role of a participant in a chat.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChatRole {
     User,
     Assistant,
