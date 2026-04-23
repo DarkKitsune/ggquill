@@ -187,17 +187,17 @@ impl Chat {
     /// Add a message more directly by a callback which uses the underlying InferIter to write the message body
     /// and returns the message content as a string.
     /// The message written to the InferIter should match the message string returned by the callback, but this is not enforced.
-    pub(crate) fn add_message_with_infer_iter<R: Display>(
+    pub(crate) fn add_message_with_infer_iter<R: AsRef<str>>(
         &mut self,
         sender: &ChatRole,
         infer_func: impl FnOnce(&mut InferIter) -> R,
-    ) -> String {
+    ) -> R {
         // Start message
         self.infer_iter
             .push_str(self.model_type.create_chat_message_begin_prompt(sender));
 
         // Use callback for message body
-        let message_text = infer_func(&mut self.infer_iter).to_string();
+        let returned = infer_func(&mut self.infer_iter);
 
         // End message
         self.infer_iter.push_str("\n");
@@ -205,9 +205,10 @@ impl Chat {
             .push_str(self.model_type.create_chat_message_end_prompt());
 
         // Add the message to the chat history
-        let message = ChatMessage::new(sender.clone(), message_text);
+        let message = ChatMessage::new(sender.clone(), returned.as_ref().to_string());
         self.chat_history.push(message);
-        self.chat_history.last().unwrap().content().to_string()
+
+        returned
     }
 
     /// Get the last message in the chat history, if any.

@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::fmt::{Debug, Display};
+use std::rc::Rc;
 
 use anyhow::{Error as E, Result};
 
@@ -29,6 +30,8 @@ pub struct Model {
     device: Device,
     eos_token: u32,
     seed: u64,
+    // The measured average tokens per second for this model, and how many times a timing has been submitted
+    avg_tokens_per_second: Rc<RefCell<Option<(f64, usize)>>>,
 }
 
 impl Model {
@@ -38,6 +41,7 @@ impl Model {
         } else {
             (false, Device::Cpu)
         };
+        println!("Using device: {:?}, is_cuda: {}", device, is_cuda);
 
         let dtype = if is_cuda { DType::BF16 } else { DType::F32 };
 
@@ -86,6 +90,7 @@ impl Model {
             vocab_size,
             seed,
             eos_token,
+            avg_tokens_per_second: Rc::new(RefCell::new(None)),
         })
     }
 
@@ -113,7 +118,7 @@ impl Model {
     pub fn new_token_string(&self) -> TokenString {
         let mut cloned_self = self.clone();
         cloned_self.clear_cache();
-        TokenString::new(Vec::new(), RefCell::new(cloned_self))
+        TokenString::new(Vec::new(), Rc::new(RefCell::new(cloned_self)))
     }
 
     pub fn tokenize_str(&self, text: impl Display) -> TokenString {
@@ -125,7 +130,7 @@ impl Model {
 
         let mut cloned_self = self.clone();
         cloned_self.clear_cache();
-        TokenString::new(token_ids, RefCell::new(cloned_self))
+        TokenString::new(token_ids, Rc::new(RefCell::new(cloned_self)))
     }
 
     pub fn tokenize(&self, text: impl IntoTokenString) -> TokenString {
@@ -196,6 +201,27 @@ impl Model {
     /// Clear the model's KV cache.
     pub fn clear_cache(&mut self) {
         self.pipeline.clear_cache();
+    }
+
+    /// Submit a timing for a generation and update the average tokens per second for this model.
+    pub(crate) fn submit_timing(&self, tokens_generated: usize, seconds: f64) {
+        let tokens_per_second = tokens_generated as f64 / seconds;
+        let mut avg_tokens_per_second = self.avg_tokens_per_second.borrow_mut();
+        if let Some((avg, count)) = *avg_tokens_per_second {
+            let new_avg = (avg * count as f64 + tokens_per_second) / (count as f64 + 1.0);
+            *avg_tokens_per_second = Some((new_avg, count + 1));
+        } else {
+            *avg_tokens_per_second = Some((tokens_per_second, 1));
+        }
+        println!("Generated {} tokens in {:.2} seconds (Avg: {:.2} tokens/sec)", tokens_generated, seconds, avg_tokens_per_second.unwrap().0);
+    }
+
+    /// Get the average tokens per second for this model. Returns none if time has not been measured.
+    /// Measuring only occurs if `InferParams::measure_time` is set to true for a generation.
+    pub fn average_tokens_per_second(&self) -> Option<f64> {
+        self.avg_tokens_per_second
+            .borrow()
+            .map(|(avg, _)| avg)
     }
 }
 

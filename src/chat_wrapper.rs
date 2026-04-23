@@ -1,37 +1,6 @@
 use std::collections::HashMap;
 
-use crate::prelude::*;
-
-/// Simulates a chat conversation by plugging given input contexts and corresponding outputs into the schemas.
-pub fn create_example_chat_history(
-    input_schema: &ChatSchema,
-    output_schema: &ChatSchema,
-    inputs: &[impl AsRef<HashMap<String, String>>],
-    outputs: &[&[impl AsRef<str>]],
-) -> Vec<ChatMessage> {
-    let mut input_messages = Vec::new();
-    let mut output_messages = Vec::new();
-
-    // Populate the input messages
-    for input_context in inputs {
-        let input_context = input_context.as_ref();
-        let input_message = ChatMessage::new(ChatRole::User, input_schema.to_input_string(input_context));
-        input_messages.push(input_message);
-    }
-
-    // Populate the output messages
-    for outputs in outputs {
-        let output_message = ChatMessage::new(ChatRole::Assistant, output_schema.to_output_string(outputs));
-        output_messages.push(output_message);
-    }
-
-    // Interleave the input and output messages to create the chat history
-    input_messages
-        .into_iter()
-        .zip(output_messages)
-        .flat_map(|(input_msg, output_msg)| vec![input_msg, output_msg])
-        .collect()
-}
+use crate::{chat_schema::SchemaWriteOutput, prelude::*};
 
 /// Uses schema to define the structure of the input and output for chat-based interactions with a model.
 pub trait ChatWrapper {
@@ -49,7 +18,7 @@ pub trait ChatWrapper {
     fn chat_mut(&mut self) -> &mut Chat;
     /// Gets the output of the chat wrapper for the given input context, using the internal schemas.
     /// Also returns the input string (as the second element of the tuple) that was generated from the input schema for reference.
-    fn get_output(&mut self, input_context: &HashMap<String, String>) -> (String, String) {
+    fn get_output(&mut self, input_context: &HashMap<String, String>) -> (SchemaWriteOutput, String) {
         let input_schema = self.input_schema().clone();
         let output_schema = self.output_schema().clone();
         let chat = self.chat_mut();
@@ -79,6 +48,7 @@ impl SimpleChatWrapper {
     /// Creates a new SimpleChatWrapper with the provided model and schemas.
     pub fn new(
         model: &mut Model,
+        infer_params: &InferParams,
         system_schema: impl Into<ChatSchema>,
         input_schema: impl Into<ChatSchema>,
         output_schema: impl Into<ChatSchema>,
@@ -90,7 +60,7 @@ impl SimpleChatWrapper {
             model,
             system_schema.to_input_string(&HashMap::new()),
             &[],
-            &InferParams::new_logical(),
+            infer_params,
             None,
         );
 

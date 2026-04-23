@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use candle_core::{Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
 
@@ -230,30 +232,40 @@ impl InferIter {
     /// Run the iterator until completion or until one of `end_sequences` is generated
     /// and return everything up to that point as an `InferCompletion`, as well as the end sequence that was reached
     pub fn complete<'a>(&mut self, end_sequences: &'a [&str]) -> InferCompletion<'a> {
+        let time = Instant::now();
+        
+        let mut tokens_generated = 0;
         let mut response = String::new();
         while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1
         {
-            let token_str = self.tokens.model.borrow().detokenize([token]);
+            tokens_generated += 1;
 
+            // Detokenize the token and add it to the response and the search window
+            let token_str = self.tokens.model.borrow().detokenize([token]);
             response.push_str(&token_str);
 
             // Exit early at the first stop sequence from end_sequences encountered in response, truncating.
-            // Only search in the last END_SEQUENCE_SEARCH_WINDOW characters of the response
             let found_stop_sequence_position = end_sequences
                 .iter()
                 .enumerate()
                 .filter_map(|(idx, &seq)| response.find(seq).map(|pos| (idx, pos)))
                 .min_by_key(|&(_, pos)| pos);
-
             if let Some((idx, pos)) = found_stop_sequence_position {
                 response.truncate(pos);
+
+                let elapsed = time.elapsed().as_secs_f64();
+                self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+
                 return InferCompletion {
                     text: response,
                     end_sequence: Some(end_sequences[idx]),
                 };
             }
         }
+
+        let elapsed = time.elapsed().as_secs_f64();
+        self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
 
         InferCompletion {
             text: response,
@@ -267,13 +279,18 @@ impl InferIter {
     /// Currently, this is implemented using "**" on both sides of the value, which may cause the model
     /// to pay special attention to the value.
     pub fn next_value(&mut self) -> String {
+        let time = Instant::now();
+
         // Insert the "**" before the first token to force the model to generate a useful value.
         // Run the iterator until we get "**" back, returning everything in between as a string.
         self.push_str("**");
         let mut response = String::new();
+        let mut tokens_generated = 0;
         while let Some(token) = self.next_token()
             && token < self.vocab_size as u32 - 1
         {
+            tokens_generated += 1;
+
             let token_str = self.tokens.model.borrow().detokenize([token]);
 
             response.push_str(&token_str);
@@ -283,16 +300,25 @@ impl InferIter {
                 break;
             }
         }
+
+        let elapsed = time.elapsed().as_secs_f64();
+        self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+
         response
     }
 
     /// Run the iterator until the current bracket is closed and return everything up to that point as a `String`.
     pub fn complete_bracket(&mut self, open_bracket: char, close_bracket: char) -> String {
+        let time = Instant::now();
+
         let mut response = String::new();
         let mut bracket_count = 0;
         let mut in_string = false;
         let mut escaped_last = false;
+        let mut tokens_generated = 0;
         while let Some(token) = self.next_token() {
+            tokens_generated += 1;
+
             let token_str = self.tokens.model.borrow().detokenize([token]);
             for c in token_str.chars() {
                 if c == '\\' && !escaped_last {
@@ -305,6 +331,9 @@ impl InferIter {
                             bracket_count += 1;
                         } else if c == close_bracket {
                             if bracket_count == 0 {
+                                let elapsed = time.elapsed().as_secs_f64();
+                                self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+
                                 return response;
                             }
                             bracket_count -= 1;
@@ -315,6 +344,10 @@ impl InferIter {
                 response.push(c);
             }
         }
+
+        let elapsed = time.elapsed().as_secs_f64();
+        self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+
         response
     }
 

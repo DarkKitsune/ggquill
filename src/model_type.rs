@@ -49,12 +49,12 @@ impl ModelType {
 
     /// Returns true if this model requires the think block to be present regardless.
     pub fn must_use_think(&self) -> bool {
-        matches!(self, ModelType::Qwen3(_) | ModelType::Qwen3InstructQuantized)
+        matches!(self, ModelType::Qwen3(_))
     }
 
     /// Returns true if this is a GGUF quantized model type, which requires special handling
     pub fn is_gguf_quantized(&self) -> bool {
-        matches!(self, ModelType::Qwen3InstructQuantized)
+        matches!(self, ModelType::Qwen3InstructQuantized | ModelType::Qwen3Special)
     }
 
     pub fn model_repo(&self) -> ModelRepo {
@@ -66,7 +66,7 @@ impl ModelType {
                 ModelSize::Large => ModelRepo::hub("Qwen/Qwen3-8B"),
             },
             ModelType::Qwen3InstructQuantized => ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF"),
-            ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
+            ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF"),
             ModelType::Qwen3InstructAbl => {
                 ModelRepo::hub("Goekdeniz-Guelmez/Josiefied-Qwen3-4B-abliterated-v2")
             }
@@ -76,6 +76,7 @@ impl ModelType {
     pub fn tokenizer_repo(&self) -> ModelRepo {
         match self {
             ModelType::Qwen3InstructQuantized => ModelRepo::hub("Qwen/Qwen3-14B"),
+            ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
             _ => self.model_repo(),
         }
     }
@@ -104,8 +105,9 @@ impl ModelType {
                     "model-00005-of-00005.safetensors",
                 ],
             },
-            ModelType::Qwen3InstructQuantized => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q4_K_M.gguf"],
-            ModelType::Qwen3Special | ModelType::Qwen3InstructAbl => &[
+            ModelType::Qwen3InstructQuantized => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q3_K_M.gguf"],
+            ModelType::Qwen3Special => &["qwen3-4b-instruct-special-q4_k_m-imat.gguf"],
+            ModelType::Qwen3InstructAbl => &[
                 "model-00001-of-00002.safetensors",
                 "model-00002-of-00002.safetensors",
             ],
@@ -150,12 +152,12 @@ impl ModelType {
     /// Create a pipeline for a GGUF quantized model of this type, which requires special handling.
     pub fn create_gguf_quantized_pipeline(&self, model_path: &PathBuf, device: &Device) -> ModelPipeline {
         match self {
-            ModelType::Qwen3InstructQuantized => {
+            ModelType::Qwen3InstructQuantized | ModelType::Qwen3Special => {
                 let mut reader = std::fs::File::open(model_path).unwrap();
                 let content = gguf_file::Content::read(&mut reader).unwrap();
                 ModelPipeline::QuantizedQwen3(QuantizedQwen3::from_gguf(content, &mut reader, device).unwrap())
             }
-            _ => unreachable!("Only GGUF quantized models should use create_gguf_quantized_pipeline"),
+            _ => unreachable!("GGUF quantized pipeline not supported for this model type"),
         }
     }
 

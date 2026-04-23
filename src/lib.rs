@@ -23,7 +23,7 @@ mod tests {
 
     #[test]
     fn chat_wrapper() {
-        const SEED: u64 = 12345;
+        const SEED: u64 = 2125215;
         const TRIVIA_QUESTIONS: &[(&str, &str)] = &[
             ("What is the boiling point of water?", "humorous"),
             (
@@ -40,15 +40,15 @@ mod tests {
         let system_schema = "You are a quiz master who answers trivia questions in the provided tone. \
             Answer concisely and accurately, and explain your answer further.";
         let mut input_schema = ChatSchema::new();
-        input_schema.add_text(Some("Question".to_string()), "{input}");
-        input_schema.add_text(Some("Tone".to_string()), "Please answer in a {tone} tone.");
+        input_schema.add_text(Some("Question".to_string()), "{ input }");
+        input_schema.add_text(Some("Tone".to_string()), "Please answer in a { tone } tone.");
         let mut output_schema = ChatSchema::new();
-        output_schema.add_text(Some("Answer".to_string()), "\"{\"}");
-        output_schema.add_text(Some("Explanation".to_string()), "\"{\"}");
+        output_schema.add_text(Some("Answer".to_string()), "\"{ \" => answer }\"");
+        output_schema.add_text(Some("Explanation".to_string()), "\"{ \" => explanation }\"");
 
         // Create the chat wrapper
         let mut chat_wrapper =
-            SimpleChatWrapper::new(&mut model, system_schema, input_schema, output_schema);
+            SimpleChatWrapper::new(&mut model, &InferParams::new_balanced(), system_schema, input_schema, output_schema);
 
         // Get the output for each trivia question and print it
         for (question, tone) in TRIVIA_QUESTIONS {
@@ -57,8 +57,12 @@ mod tests {
                 "tone" => tone,
             };
             let (output, input) = chat_wrapper.get_output(&input_context);
-            println!("Input:\n{}\n\nOutput:\n{}\n\n=====\n\n", input, output);
+            let output = output.captures();
+            println!("Input:\n{}\n\nAnswer: {}\n\nExplanation: {}\n\n======\n", input, output["answer"], output["explanation"]);
         }
+
+        // Print timings
+        println!("\n\nAverage tok/s: {}", model.average_tokens_per_second().unwrap());
     }
 
     #[test]
@@ -151,29 +155,6 @@ mod tests {
     }
 
     #[test]
-    fn predict_chain() {
-        const SEED: u64 = 13579;
-
-        // Create the model
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
-
-        let mut prediction = model.predict_next(
-            "Here is my character bio:\nName: Jessie\nAge: 19\nClass: Archer",
-            &InferParams::new_balanced(),
-        );
-        prediction.push_str("\nWeapon: ");
-        let weapon = prediction.next_value();
-        prediction.push_str("\nClothing: ");
-        let clothing = prediction.next_value();
-        prediction.push_str("\nHometown: ");
-        let hometown = prediction.next_value();
-        println!(
-            "Predicted character bio:\nName: Jessie\nAge: 19\nClass: Archer\nWeapon: {}\nClothing: {}\nHometown: {}",
-            weapon, clothing, hometown
-        );
-    }
-
-    #[test]
     fn joiner() {
         const SEED: u64 = 24680;
         const ITEMS_TO_JOIN: &[&[&str]] = &[
@@ -239,78 +220,11 @@ mod tests {
         let mut story = "There was once".to_string();
         story.push_str(
             &model
-                .predict_next("story = \"There was once", &InferParams::new_creative())
+                .predict_next("const long_story: string = \"There was once", &InferParams::new_creative())
                 .complete(&["\""])
                 .unwrap(),
         );
         println!("Generated story:\n{}", story);
-    }
-
-    #[test]
-    fn instructor() {
-        const SEED: u64 = 98765;
-        const INSTRUCTIONS: &[&str] = &[
-            "Email Jessie a snarky message about how she is the worst.",
-            "Walk my dog Max in the park at 5:25 PM tomorrow.",
-            "Order a pizza from Cosmic Joe's with pepperoni, mushrooms, and extra cheese.",
-            "Remind me to call Alice about the project update at 3 PM today. Subject: Project Update Reminder.",
-        ];
-
-        // Create the model
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
-
-        // Define some instruction definitions for the instructor to learn from
-        let instruction_definitions = vec![
-            InstructionDefinition::new(
-                "send_email",
-                vec!["recipient".into(), "subject".into(), "body".into()],
-                "Send a short email to John reminding him about the meeting tomorrow at half past 10.",
-                vec![
-                    "John".into(),
-                    "Meeting Reminder".into(),
-                    "Don't forget about our meeting tomorrow at 10:30 AM!".into(),
-                ],
-            ),
-            InstructionDefinition::new(
-                "travel",
-                vec![
-                    "destination".into(),
-                    "day".into(),
-                    "time_hour".into(),
-                    "time_minute".into(),
-                    "travel_method".into(),
-                ],
-                "I'd like to drive my red car to Paris tomorrow at noon.",
-                vec![
-                    "Paris".into(),
-                    "tomorrow".into(),
-                    12.into(),
-                    0.into(),
-                    "car".into(),
-                ],
-            ),
-            InstructionDefinition::new(
-                "order_food",
-                vec!["from_where".into(), "dish".into()],
-                "Yesterday I went to the burger place down the street. I got the bbq bacon burger and it was delicious!",
-                vec![
-                    "the burger place down the street".into(),
-                    "bbq bacon burger".into(),
-                ],
-            ),
-        ];
-
-        // Create an instructor with the instruction definitions
-        let mut instructor = Instructor::new(&mut model, instruction_definitions);
-
-        // Parse each instruction in INSTRUCTIONS and print the resulting function calls
-        for instruction in INSTRUCTIONS {
-            // Parse the instruction
-            let parsed_instruction = instructor.parse_instruction(instruction).unwrap();
-            println!(
-                "Instruction:\n{}\n\nParsed instruction:\nName: {}\nArgs: {:#?}\n\n\n",
-                instruction, parsed_instruction.name, parsed_instruction.args
-            );
-        }
+        println!("\n\nAverage tok/s: {}", model.average_tokens_per_second().unwrap());
     }
 }

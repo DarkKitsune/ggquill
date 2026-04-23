@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Display, slice::SliceIndex};
+use std::{cell::RefCell, fmt::Display, rc::Rc, slice::SliceIndex};
 
 use crate::model::Model;
 
@@ -6,12 +6,12 @@ use crate::model::Model;
 #[derive(Clone)]
 pub struct TokenString {
     pub tokens: Vec<u32>,
-    pub model: RefCell<Model>,
+    pub model: Rc<RefCell<Model>>,
 }
 
 impl TokenString {
     /// Create a new TokenString from a list of tokens and a model
-    pub(crate) fn new(tokens: Vec<u32>, model: RefCell<Model>) -> Self {
+    pub(crate) fn new(tokens: Vec<u32>, model: Rc<RefCell<Model>>) -> Self {
         Self { tokens, model }
     }
 

@@ -156,6 +156,7 @@ impl Instructor {
                 Some(&begin_response),
                 &["("],
                 |func_name: &str, infer_iter: &mut InferIter, end_sequence: Option<&str>| {
+                    println!("infer_iter so far: '{}', end_sequence: {:?}", infer_iter.full_context(), end_sequence);
                     // If the end sequence is not "(" then we return None since the model did not follow the expected format
                     if end_sequence != Some("(") {
                         return None;
