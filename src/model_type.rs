@@ -224,6 +224,12 @@ impl ModelType {
                         message.content()
                     ));
                 }
+                ChatRole::System => {
+                    prompt.push_str(&format!(
+                        "<|im_start|>system\n{}\n<|im_end|>\n",
+                        message.content()
+                    ));
+                }
                 ChatRole::Other(name) => {
                     prompt.push_str(&format!(
                         "<|im_start|>{}\n{}\n<|im_end|>\n",
@@ -252,7 +258,7 @@ impl ModelType {
                     prompt.push_str("<think>\n\n</think>\n");
                 }
             }
-            ChatRole::Other(_) => {}
+            ChatRole::System | ChatRole::Other(_) => {}
         }
 
         prompt
@@ -270,6 +276,7 @@ impl ModelType {
         match role {
             ChatRole::Assistant => "assistant",
             ChatRole::User => "user",
+            ChatRole::System => "system",
             ChatRole::Other(name) => name,
         }
     }

@@ -40,15 +40,39 @@ mod tests {
         let system_schema = "You are a quiz master who answers trivia questions in the provided tone. \
             Answer concisely and accurately, and explain your answer further.";
         let mut input_schema = ChatSchema::new();
-        input_schema.add_text(Some("Question".to_string()), "{ input }");
-        input_schema.add_text(Some("Tone".to_string()), "Please answer in a { tone } tone.");
+        input_schema.add_text(Some("Question".to_string()), "{input}");
+        input_schema.add_text(Some("Tone".to_string()), "Please answer in a {tone} tone.");
         let mut output_schema = ChatSchema::new();
-        output_schema.add_text(Some("Answer".to_string()), "\"{ \" => answer }\"");
-        output_schema.add_text(Some("Explanation".to_string()), "\"{ \" => explanation }\"");
+        output_schema.add_text(Some("Answer".to_string()), "\"{\" => answer}\"");
+        output_schema.add_text(Some("Explanation".to_string()), "\"{\" => explanation}\"");
+
+        // Create some examples
+        let examples = [
+            (
+                string_map! {
+                    "input" => "What is 2 + 2?",
+                    "tone" => "pirate-like",
+                },
+                string_map! {
+                    "answer" => "Arrr, 2 + 2 is 4.",
+                    "explanation" => "This be because when ye add two and two together, ye get four. It be basic math, matey!",
+                },
+            ),
+            (
+                string_map! {
+                    "input" => "What is the capital of Oregon?",
+                    "tone" => "straightforward and non-verbose",
+                },
+                string_map! {
+                    "answer" => "Salem.",
+                    "explanation" => "Salem was made the capital of Oregon mainly due to its central location and accessibility.",
+                },
+            )
+        ];
 
         // Create the chat wrapper
         let mut chat_wrapper =
-            SimpleChatWrapper::new(&mut model, &InferParams::new_balanced(), system_schema, input_schema, output_schema);
+            SimpleChatWrapper::new(&mut model, &InferParams::new_balanced(), system_schema, input_schema, output_schema, examples);
 
         // Get the output for each trivia question and print it
         for (question, tone) in TRIVIA_QUESTIONS {

@@ -52,14 +52,16 @@ impl SimpleChatWrapper {
         system_schema: impl Into<ChatSchema>,
         input_schema: impl Into<ChatSchema>,
         output_schema: impl Into<ChatSchema>,
+        example_pairs: impl IntoIterator<Item = (HashMap<String, String>, HashMap<String, String>)>,
     ) -> Self {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
         let output_schema = output_schema.into();
+        let example_messages = create_chat_wrapper_examples(&input_schema, &output_schema, example_pairs);
         let chat = Chat::new(
             model,
             system_schema.to_input_string(&HashMap::new()),
-            &[],
+            &example_messages,
             infer_params,
             None,
         );

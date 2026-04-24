@@ -331,6 +331,19 @@ impl ChatMessage {
         }
     }
 
+    /// Creates a new chat message from the assistant.
+    pub fn assistant(content: impl Display) -> Self {
+        Self::new(ChatRole::Assistant, content)
+    }
+
+    /// Creates a new chat message from the user.
+    pub fn user(content: impl Display) -> Self {
+        Self::new(ChatRole::User, content)
+    }
+
+    /// Creates a new chat message from the system.
+    
+
     /// Returns the sender of the message.
     pub fn sender(&self) -> &ChatRole {
         &self.sender
@@ -349,7 +362,7 @@ impl ChatMessage {
 
 impl Display for ChatMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.sender, self.content)
+        write!(f, "{}:\n{}", self.sender, self.content)
     }
 }
 
@@ -358,6 +371,7 @@ impl Display for ChatMessage {
 pub enum ChatRole {
     User,
     Assistant,
+    System,
     Other(String),
 }
 
@@ -366,6 +380,7 @@ impl Display for ChatRole {
         match self {
             ChatRole::User => write!(f, "user"),
             ChatRole::Assistant => write!(f, "assistant"),
+            ChatRole::System => write!(f, "system"),
             ChatRole::Other(name) => write!(f, "{}", name),
         }
     }

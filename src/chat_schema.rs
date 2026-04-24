@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use aho_corasick::AhoCorasick;
 use regex::Match;
 
-use crate::prelude::InferIter;
+use crate::{chat::ChatMessage, prelude::InferIter};
 
 pub const SCHEMA_PASSTHROUGH_INPUT: &str = "input";
 
@@ -28,6 +28,18 @@ fn find_context_keys<'a>(input: &'a str) -> Vec<Match<'a>> {
     re.captures_iter(input)
         .filter_map(|cap| cap.get(1))
         .collect()
+}
+
+/// Helper function for creating example user messages and responses based on the input and output schemas, which can be used to provide examples to the model.
+pub fn create_chat_wrapper_examples(input_schema: &ChatSchema, output_schema: &ChatSchema, input_output_pairs: impl IntoIterator<Item = (HashMap<String, String>, HashMap<String, String>)>) -> Vec<ChatMessage> {
+    input_output_pairs.into_iter().flat_map(move |(input_context, output_values)| {
+        let input_string = input_schema.to_input_string(&input_context);
+        let output_string = output_schema.to_output_string(output_values);
+        [
+            ChatMessage::user(input_string),
+            ChatMessage::assistant(output_string),
+        ]
+    }).collect()
 }
 
 /// The output from writing an output schema as returned by `ChatSchema::write_output`, which includes the inferred output string as well as any captures.
@@ -156,6 +168,67 @@ impl ChatSchema {
             .collect::<Vec<_>>()
             .join("\n\n")
     }
+
+    /// Converts the schema to a string as an output, replacing each inferable key with the corresponding value in `output_captures`.
+    pub fn to_output_string(&self, output_captures: HashMap<String, String>) -> String {
+        let mut written_so_far = String::new();
+        for (i, block) in self.blocks.iter().enumerate() {
+            // For each block, replace any inferable keys with the next value from the outputs iterator
+            let block_string = block.to_raw_string();
+            let keys = find_context_keys(&block_string);
+            if keys.is_empty() {
+                written_so_far.push_str(&block_string);
+            } else {
+                let mut last_index = 0;
+                for key in keys {
+                    // If the key contains a capture identifier (indicated by "=>"), split the key and use the part after "=>" as the capture key
+                    // The part before "=>" is used as the end sequence later
+                    let key_str = key.as_str();
+                    let (end_sequences_str, capture_key) = if let Some(split_index) = key_str.find("=>") {
+                        (key_str[..split_index].trim(), key_str[split_index + 2..].trim())
+                    } else {
+                        panic!("Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'", key_str);
+                    };
+
+                    let start = key.start() - 1; // Include the opening '{'
+                    let end = key.end() + 1; // Include the closing '}'
+
+                    // Push the string before the key
+                    if start > last_index {
+                        written_so_far.push_str(&block_string[last_index..start]);
+                    }
+
+                    // Get the first end sequence from the key (may be multiple separated by '|')
+                    let end_sequence = end_sequences_str
+                        .split('|')
+                        .find(|s| !s.trim().is_empty())
+                        .map(|s| s.trim()); 
+
+                    // Get the output value for the key from the output captures
+                    let output_value = output_captures.get(capture_key).unwrap_or_else(|| panic!("Output captures must contain a value for key '{}', but it was not found in the provided output captures: {:?}", capture_key, output_captures)).trim();
+                    written_so_far.push_str(output_value);
+                    // If there is an end sequence specified and output_value did not end with it, push it to the output string
+                    if let Some(end_sequence) = end_sequence && !output_value.ends_with(end_sequence) {
+                        written_so_far.push_str(end_sequence);
+                    }
+
+                    last_index = end;
+                }
+
+                // Push any remaining string after the last key
+                if last_index < block_string.len() {
+                    written_so_far.push_str(&block_string[last_index..]);
+                }
+            }
+
+            // Add a newline after each block (except the last one)
+            if i < self.blocks.len() - 1 {
+                written_so_far.push_str("\n\n");
+            }
+        }
+
+        written_so_far
+    }
 }
 
 impl Default for ChatSchema {
@@ -228,9 +301,9 @@ pub trait SchemaBlock {
             // The part before "=>" is used as the end sequence for inference as normal
             let key_str = key.as_str();
             let (end_sequences_str, capture_key) = if let Some(split_index) = key_str.find("=>") {
-                (key_str[..split_index].trim(), Some(key_str[split_index + 2..].trim()))
+                (key_str[..split_index].trim(), key_str[split_index + 2..].trim())
             } else {
-                (key_str.trim(), None)
+                panic!("Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'", key_str);
             };
             
 
@@ -259,10 +332,8 @@ pub trait SchemaBlock {
 
             // Infer until the end sequence is found, this will end up in the InferIter anyway so no need to push
             let inferred = iter.complete(&end_sequences);
-            // If there is a capture key, save the inferred value in the captures map with the capture key
-            if let Some(capture_key) = capture_key {
-                captures.insert(capture_key.to_string(), inferred.result().to_string());
-            }
+            // Save the inferred value in the captures map with the capture key
+            captures.insert(capture_key.to_string(), inferred.result().to_string());
             // Push the end sequence onto the inferred string because it is not normally included
             let end_sequence = inferred.end_sequence().unwrap_or_default().to_string();
             let mut inferred = inferred.unwrap();

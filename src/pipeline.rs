@@ -57,7 +57,7 @@ impl PipelineStep {
 
                 // Add the system prompt as a system message to the chat
                 chat.push_message(ChatMessage::new(
-                    ChatRole::Other("system".to_string()),
+                    ChatRole::System,
                     prompt.clone(),
                 ));
                 None

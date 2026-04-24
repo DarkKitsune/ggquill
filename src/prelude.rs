@@ -1,6 +1,6 @@
 pub use crate::actor::Actor;
 pub use crate::chat::{Chat, ChatMessage, ChatRole};
-pub use crate::chat_schema::{ChatSchema, SCHEMA_PASSTHROUGH_INPUT};
+pub use crate::chat_schema::{ChatSchema, create_chat_wrapper_examples, SCHEMA_PASSTHROUGH_INPUT};
 pub use crate::data::{JsonMap, JsonValue};
 pub use crate::inference::{InferIter, InferParams};
 pub use crate::instructor::{InstructionDefinition, Instructor, ParsedInstruction};
