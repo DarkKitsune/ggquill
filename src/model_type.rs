@@ -49,7 +49,7 @@ impl ModelType {
 
     /// Returns true if this model requires the think block to be present regardless.
     pub fn must_use_think(&self) -> bool {
-        matches!(self, ModelType::Qwen3(_))
+        matches!(self, ModelType::Qwen3(_) | ModelType::Qwen3InstructQuantized)
     }
 
     /// Returns true if this is a GGUF quantized model type, which requires special handling

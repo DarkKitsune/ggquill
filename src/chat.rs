@@ -155,9 +155,12 @@ impl Chat {
         // Then infer the response from the model until we get one of the end sequences back
         let response = self.infer_iter.complete(&full_end_sequences);
 
+        // Get the result of the inference, with any U+FFFD replacement characters removed (indicates invalid UTF-8)
+        let response_result = response.result().replace('\u{FFFD}', "").trim().to_string();
+
         // If there is an after_response callback then call it with a mutable reference to the InferIter and the end sequence which caused the inference to end
         let after_response_result = after_response(
-            response.result(),
+            &response_result,
             &mut self.infer_iter,
             response.end_sequence(),
         );
@@ -176,7 +179,7 @@ impl Chat {
             .push_str(self.model_type.create_chat_message_end_prompt());
 
         // Add the inferred response to the chat history as a new message
-        let message = ChatMessage::new(sender.clone(), response.result());
+        let message = ChatMessage::new(sender.clone(), response_result);
         self.chat_history.push(message);
         Some((
             self.chat_history.last().unwrap().content(),

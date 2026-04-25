@@ -105,7 +105,6 @@ pub struct InferIter {
     device: Device,
     tokens: TokenString,
     pending_tokens: Option<TokenString>,
-    vocab_size: usize,
     logits_processor: LogitsProcessor,
     seed: u64,
     last_set_temperature: f64,
@@ -127,7 +126,6 @@ impl InferIter {
         mut model: Model,
         device: Device,
         tokens: TokenString,
-        vocab_size: usize,
         params: &InferParams,
     ) -> Self {
         // Create logits processor
@@ -140,7 +138,6 @@ impl InferIter {
             model,
             device,
             tokens,
-            vocab_size,
             logits_processor,
             seed,
             last_set_temperature: params.temperature,
@@ -253,9 +250,7 @@ impl InferIter {
 
         let mut tokens_generated = 0;
         let mut response = String::new();
-        while let Some(token) = self.next_token()
-            && token < self.vocab_size as u32 - 1
-        {
+        while let Some(token) = self.next_token() {
             tokens_generated += 1;
 
             // Detokenize the token and add it to the response and the search window
@@ -309,9 +304,7 @@ impl InferIter {
         self.push_str("**");
         let mut response = String::new();
         let mut tokens_generated = 0;
-        while let Some(token) = self.next_token()
-            && token < self.vocab_size as u32 - 1
-        {
+        while let Some(token) = self.next_token() {
             tokens_generated += 1;
 
             let token_str = self.tokens.model.borrow().detokenize([token]);

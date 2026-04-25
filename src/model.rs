@@ -26,7 +26,6 @@ pub struct Model {
     model_type: ModelType,
     pipeline: ModelPipeline,
     tokenizer: Tokenizer,
-    vocab_size: usize,
     device: Device,
     eos_token: u32,
     seed: u64,
@@ -77,7 +76,6 @@ impl Model {
 
         // Create tokenizer
         let tokenizer = Tokenizer::from_file(tokenizer_filename).map_err(E::msg)?;
-        let vocab_size = tokenizer.get_vocab_size(false);
 
         // Get the end of text token
         let eos_token = *tokenizer.get_vocab(true).get("<|endoftext|>").unwrap();
@@ -87,7 +85,6 @@ impl Model {
             pipeline,
             tokenizer,
             device: device.clone(),
-            vocab_size,
             seed,
             eos_token,
             avg_tokens_per_second: Rc::new(RefCell::new(None)),
@@ -184,7 +181,6 @@ impl Model {
             self.clone(),
             self.device.clone(),
             prompt,
-            self.vocab_size,
             params,
         ))
     }
