@@ -3,9 +3,9 @@ pub mod chat;
 pub mod chat_schema;
 pub mod chat_wrapper;
 pub mod data;
+pub mod humanizer;
 pub mod inference;
 pub mod instructor;
-pub mod humanizer;
 pub mod model;
 pub mod model_type;
 pub mod pipeline;
@@ -67,12 +67,18 @@ mod tests {
                     "answer" => "Salem.",
                     "explanation" => "Salem was made the capital of Oregon mainly due to its central location and accessibility.",
                 },
-            )
+            ),
         ];
 
         // Create the chat wrapper
-        let mut chat_wrapper =
-            SimpleChatWrapper::new(&mut model, &InferParams::new_balanced(), system_schema, input_schema, output_schema, examples);
+        let mut chat_wrapper = SimpleChatWrapper::new(
+            &mut model,
+            &InferParams::new_balanced(),
+            system_schema,
+            input_schema,
+            output_schema,
+            examples,
+        );
 
         // Get the output for each trivia question and print it
         for (question, tone) in TRIVIA_QUESTIONS {
@@ -81,11 +87,17 @@ mod tests {
                 "tone" => tone,
             };
             let output = chat_wrapper.get_output(&input_context).into_captures();
-            println!("Question: {}\nTone: {}\nAnswer: {}\nExplanation: {}\n\n======\n", question, tone, output["answer"], output["explanation"]);
+            println!(
+                "Question: {}\nTone: {}\nAnswer: {}\nExplanation: {}\n\n======\n",
+                question, tone, output["answer"], output["explanation"]
+            );
         }
 
         // Print timings
-        println!("\n\nAverage tok/s: {}", model.average_tokens_per_second().unwrap());
+        println!(
+            "\n\nAverage tok/s: {}",
+            model.average_tokens_per_second().unwrap()
+        );
     }
 
     #[test]
@@ -210,7 +222,7 @@ mod tests {
                     {\"name\": \"Bob\", \"role\": \"antagonist\", \"traits\": [\"cunning\", \"ruthless\"]},\n\
                     {\"name\": \"Eve\", \"role\": \"sidekick\", \"traits\": [\"loyal\", \"resourceful\"]}\n\
                 ]",
-            ]
+            ],
         ];
 
         // Create the model
@@ -236,11 +248,17 @@ mod tests {
         let mut story = "There was once".to_string();
         story.push_str(
             &model
-                .predict_next("const long_story: string = \"There was once", &InferParams::new_creative())
+                .predict_next(
+                    "const long_story: string = \"There was once",
+                    &InferParams::new_creative(),
+                )
                 .complete(&["\""])
                 .unwrap(),
         );
         println!("Generated story:\n{}", story);
-        println!("\n\nAverage tok/s: {}", model.average_tokens_per_second().unwrap());
+        println!(
+            "\n\nAverage tok/s: {}",
+            model.average_tokens_per_second().unwrap()
+        );
     }
 }

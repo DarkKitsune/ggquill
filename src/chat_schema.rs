@@ -13,7 +13,12 @@ fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> St
     // Build the patterns and replacements for the Aho-Corasick algorithm
     let (patterns, replacements): (Vec<String>, Vec<String>) = context
         .iter()
-        .flat_map(|(k, v)| [(format!("{{{}}}", k), v.clone()), (format!("{{ {} }}", k), v.clone())])
+        .flat_map(|(k, v)| {
+            [
+                (format!("{{{}}}", k), v.clone()),
+                (format!("{{ {} }}", k), v.clone()),
+            ]
+        })
         .unzip();
 
     // Instead of a simple replace we use aho-corasick to find and replace all context keys in one pass
@@ -31,15 +36,22 @@ fn find_context_keys<'a>(input: &'a str) -> Vec<Match<'a>> {
 }
 
 /// Helper function for creating example user messages and responses based on the input and output schemas, which can be used to provide examples to the model.
-pub fn create_chat_wrapper_examples(input_schema: &ChatSchema, output_schema: &ChatSchema, input_output_pairs: impl IntoIterator<Item = (HashMap<String, String>, HashMap<String, String>)>) -> Vec<ChatMessage> {
-    input_output_pairs.into_iter().flat_map(move |(input_context, output_values)| {
-        let input_string = input_schema.to_input_string(&input_context);
-        let output_string = output_schema.to_output_string(output_values);
-        [
-            ChatMessage::user(input_string),
-            ChatMessage::assistant(output_string),
-        ]
-    }).collect()
+pub fn create_chat_wrapper_examples(
+    input_schema: &ChatSchema,
+    output_schema: &ChatSchema,
+    input_output_pairs: impl IntoIterator<Item = (HashMap<String, String>, HashMap<String, String>)>,
+) -> Vec<ChatMessage> {
+    input_output_pairs
+        .into_iter()
+        .flat_map(move |(input_context, output_values)| {
+            let input_string = input_schema.to_input_string(&input_context);
+            let output_string = output_schema.to_output_string(output_values);
+            [
+                ChatMessage::user(input_string),
+                ChatMessage::assistant(output_string),
+            ]
+        })
+        .collect()
 }
 
 /// The output from writing an output schema as returned by `ChatSchema::write_output`, which includes the inferred output string as well as any captures.
@@ -195,10 +207,18 @@ impl ChatSchema {
                     // If the key contains a capture identifier (indicated by "=>"), split the key and use the part after "=>" as the capture key
                     // The part before "=>" is used as the end sequence later
                     let key_str = key.as_str();
-                    let (end_sequences_str, capture_key) = if let Some(split_index) = key_str.find("=>") {
-                        (key_str[..split_index].trim(), key_str[split_index + 2..].trim())
+                    let (end_sequences_str, capture_key) = if let Some(split_index) =
+                        key_str.find("=>")
+                    {
+                        (
+                            key_str[..split_index].trim(),
+                            key_str[split_index + 2..].trim(),
+                        )
                     } else {
-                        panic!("Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'", key_str);
+                        panic!(
+                            "Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'",
+                            key_str
+                        );
                     };
 
                     let start = key.start() - 1; // Include the opening '{'
@@ -209,18 +229,28 @@ impl ChatSchema {
                         written_so_far.push_str(&block_string[last_index..start]);
                     }
 
-                    // Get the first end sequence from the key (may be multiple separated by '|')
-                    let end_sequence = end_sequences_str
+                    // Get all end sequences from the key (may be multiple separated by '|')
+                    let end_sequences = end_sequences_str
                         .split('|')
-                        .find(|s| !s.trim().is_empty())
-                        .map(|s| s.trim()); 
+                        .filter_map(|s| {
+                            let trimmed = s.trim();
+                            if trimmed.is_empty() {
+                                None
+                            } else {
+                                Some(trimmed)
+                            }
+                        })
+                        .collect::<Vec<_>>();
 
                     // Get the output value for the key from the output captures
                     let output_value = output_captures.get(capture_key).unwrap_or_else(|| panic!("Output captures must contain a value for key '{}', but it was not found in the provided output captures: {:?}", capture_key, output_captures)).trim();
                     written_so_far.push_str(output_value);
-                    // If there is an end sequence specified and output_value did not end with it, push it to the output string
-                    if let Some(end_sequence) = end_sequence && !output_value.ends_with(end_sequence) {
-                        written_so_far.push_str(end_sequence);
+
+                    // If there are end sequences, and the output value does not end with one of them, push the first end sequence onto the output value
+                    if !end_sequences.is_empty()
+                        && !end_sequences.iter().any(|&seq| output_value.ends_with(seq))
+                    {
+                        written_so_far.push_str(end_sequences[0]);
                     }
 
                     last_index = end;
@@ -258,8 +288,7 @@ impl Clone for ChatSchema {
 
 impl From<&str> for ChatSchema {
     fn from(s: &str) -> Self {
-        ChatSchema::new()
-            .with_text(None, s)
+        ChatSchema::new().with_text(None, s)
     }
 }
 
@@ -311,11 +340,16 @@ pub trait SchemaBlock {
             // The part before "=>" is used as the end sequence for inference as normal
             let key_str = key.as_str();
             let (end_sequences_str, capture_key) = if let Some(split_index) = key_str.find("=>") {
-                (key_str[..split_index].trim(), key_str[split_index + 2..].trim())
+                (
+                    key_str[..split_index].trim(),
+                    key_str[split_index + 2..].trim(),
+                )
             } else {
-                panic!("Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'", key_str);
+                panic!(
+                    "Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'",
+                    key_str
+                );
             };
-            
 
             let start = key.start() - 1; // Include the opening '{'
             let end = key.end() + 1; // Include the closing '}'
@@ -327,8 +361,7 @@ pub trait SchemaBlock {
             }
 
             // Get the end sequence(s) from the key (may be multiple separated by '|')
-            let end_sequences: Vec<&str> = 
-                end_sequences_str
+            let end_sequences: Vec<&str> = end_sequences_str
                 .split('|')
                 .filter_map(|s| {
                     let trimmed = s.trim();

@@ -54,7 +54,8 @@ impl SimpleChatWrapper {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
         let output_schema = output_schema.into();
-        let example_messages = create_chat_wrapper_examples(&input_schema, &output_schema, example_pairs);
+        let example_messages =
+            create_chat_wrapper_examples(&input_schema, &output_schema, example_pairs);
         let chat = Chat::new(
             model,
             system_schema.to_input_string(&HashMap::new()),

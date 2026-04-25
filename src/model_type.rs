@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use candle_core::quantized::gguf_file;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
+use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::models::qwen2::ModelForCausalLM as Qwen2;
 use candle_transformers::models::qwen3::ModelForCausalLM as Qwen3;
-use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use hf_hub::api::sync::Api;
 
 use crate::chat::{ChatMessage, ChatRole};
@@ -54,7 +54,10 @@ impl ModelType {
 
     /// Returns true if this is a GGUF quantized model type, which requires special handling
     pub fn is_gguf_quantized(&self) -> bool {
-        matches!(self, ModelType::Qwen3InstructQuantized | ModelType::Qwen3Special)
+        matches!(
+            self,
+            ModelType::Qwen3InstructQuantized | ModelType::Qwen3Special
+        )
     }
 
     pub fn model_repo(&self) -> ModelRepo {
@@ -65,8 +68,12 @@ impl ModelType {
                 ModelSize::Medium => ModelRepo::hub("Qwen/Qwen3-4B"),
                 ModelSize::Large => ModelRepo::hub("Qwen/Qwen3-8B"),
             },
-            ModelType::Qwen3InstructQuantized => ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF"),
-            ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF"),
+            ModelType::Qwen3InstructQuantized => {
+                ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF")
+            }
+            ModelType::Qwen3Special => {
+                ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF")
+            }
             ModelType::Qwen3InstructAbl => {
                 ModelRepo::hub("Goekdeniz-Guelmez/Josiefied-Qwen3-4B-abliterated-v2")
             }
@@ -150,12 +157,18 @@ impl ModelType {
     }
 
     /// Create a pipeline for a GGUF quantized model of this type, which requires special handling.
-    pub fn create_gguf_quantized_pipeline(&self, model_path: &PathBuf, device: &Device) -> ModelPipeline {
+    pub fn create_gguf_quantized_pipeline(
+        &self,
+        model_path: &PathBuf,
+        device: &Device,
+    ) -> ModelPipeline {
         match self {
             ModelType::Qwen3InstructQuantized | ModelType::Qwen3Special => {
                 let mut reader = std::fs::File::open(model_path).unwrap();
                 let content = gguf_file::Content::read(&mut reader).unwrap();
-                ModelPipeline::QuantizedQwen3(QuantizedQwen3::from_gguf(content, &mut reader, device).unwrap())
+                ModelPipeline::QuantizedQwen3(
+                    QuantizedQwen3::from_gguf(content, &mut reader, device).unwrap(),
+                )
             }
             _ => unreachable!("GGUF quantized pipeline not supported for this model type"),
         }
@@ -213,14 +226,22 @@ impl ModelType {
                 ChatRole::User => {
                     prompt.push_str(&format!(
                         "<|im_start|>user\n{}{}\n<|im_end|>\n",
-                        if self.must_use_think() { "/no_think " } else { "" },
+                        if self.must_use_think() {
+                            "/no_think "
+                        } else {
+                            ""
+                        },
                         message.content()
                     ));
                 }
                 ChatRole::Assistant => {
                     prompt.push_str(&format!(
                         "<|im_start|>assistant\n{}{}\n<|im_end|>\n",
-                        if self.must_use_think() { "<think>\n\n</think>\n" } else { "" },
+                        if self.must_use_think() {
+                            "<think>\n\n</think>\n"
+                        } else {
+                            ""
+                        },
                         message.content()
                     ));
                 }

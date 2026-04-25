@@ -4,9 +4,9 @@ use std::rc::Rc;
 
 use anyhow::{Error as E, Result};
 
+use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::models::qwen2::{Config as Qwen2Config, ModelForCausalLM as Qwen2};
 use candle_transformers::models::qwen3::{Config as Qwen3Config, ModelForCausalLM as Qwen3};
-use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
@@ -63,13 +63,13 @@ impl Model {
 
         let pipeline = if model_type.is_gguf_quantized() {
             model_type.create_gguf_quantized_pipeline(&model_filenames[0], &device)
-        }
-        else {
+        } else {
             // Create model config
             let config = model_type.create_config(&model_repo, &api);
 
             // Create VarBuilder
-            let vb = unsafe { VarBuilder::from_mmaped_safetensors(&model_filenames, dtype, &device)? };
+            let vb =
+                unsafe { VarBuilder::from_mmaped_safetensors(&model_filenames, dtype, &device)? };
 
             // Create pipeline
             model_type.create_pipeline(&config, vb)
@@ -213,15 +213,18 @@ impl Model {
         } else {
             *avg_tokens_per_second = Some((tokens_per_second, 1));
         }
-        println!("Generated {} tokens in {:.2} seconds (Avg: {:.2} tokens/sec)", tokens_generated, seconds, avg_tokens_per_second.unwrap().0);
+        println!(
+            "Generated {} tokens in {:.2} seconds (Avg: {:.2} tokens/sec)",
+            tokens_generated,
+            seconds,
+            avg_tokens_per_second.unwrap().0
+        );
     }
 
     /// Get the average tokens per second for this model. Returns none if time has not been measured.
     /// Measuring only occurs if `InferParams::measure_time` is set to true for a generation.
     pub fn average_tokens_per_second(&self) -> Option<f64> {
-        self.avg_tokens_per_second
-            .borrow()
-            .map(|(avg, _)| avg)
+        self.avg_tokens_per_second.borrow().map(|(avg, _)| avg)
     }
 }
 

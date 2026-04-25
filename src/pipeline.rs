@@ -56,10 +56,7 @@ impl PipelineStep {
                 let prompt = substitute_context_keys(prompt, context);
 
                 // Add the system prompt as a system message to the chat
-                chat.push_message(ChatMessage::new(
-                    ChatRole::System,
-                    prompt.clone(),
-                ));
+                chat.push_message(ChatMessage::new(ChatRole::System, prompt.clone()));
                 None
             }
 

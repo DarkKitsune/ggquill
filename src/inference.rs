@@ -107,6 +107,10 @@ pub struct InferIter {
     pending_tokens: Option<TokenString>,
     vocab_size: usize,
     logits_processor: LogitsProcessor,
+    seed: u64,
+    last_set_temperature: f64,
+    temperature: f64,
+    steps_since_last_temperature_reduction: usize,
     repeat_penalty: f32,
     repeat_scan_length: usize,
     eos_token: u32,
@@ -116,6 +120,8 @@ pub struct InferIter {
 
 impl InferIter {
     const TOP_P: f64 = 0.85;
+    const TEMPERATURE_REDUCTION_INTERVAL: usize = 64;
+    const TEMPERATURE_REDUCTION_FACTOR: f64 = 0.97;
 
     pub(crate) fn new(
         mut model: Model,
@@ -125,11 +131,9 @@ impl InferIter {
         params: &InferParams,
     ) -> Self {
         // Create logits processor
-        let logits_processor = LogitsProcessor::new(
-            model.next_seed(),
-            Some(params.temperature),
-            Some(Self::TOP_P),
-        );
+        let seed = model.next_seed();
+        let logits_processor =
+            LogitsProcessor::new(seed, Some(params.temperature), Some(Self::TOP_P));
 
         let eos_token = model.eos_token();
         Self {
@@ -138,6 +142,10 @@ impl InferIter {
             tokens,
             vocab_size,
             logits_processor,
+            seed,
+            last_set_temperature: params.temperature,
+            temperature: params.temperature,
+            steps_since_last_temperature_reduction: 0,
             repeat_penalty: params.repeat_penalty,
             repeat_scan_length: params.repeat_scan_length,
             eos_token,
@@ -212,9 +220,6 @@ impl InferIter {
         // Sample the next token
         let next_token = self.logits_processor.sample(&logits).unwrap();
 
-        // Increment the step
-        self.step += 1;
-
         // If the token is not the end of text token, add it to the tokens
         if next_token != self.eos_token {
             self.tokens.push_token(next_token);
@@ -225,6 +230,18 @@ impl InferIter {
             return None;
         }
 
+        // Increment the step
+        self.step += 1;
+        self.steps_since_last_temperature_reduction += 1;
+
+        // Reduce the temperature every TEMPERATURE_REDUCTION_INTERVAL steps to help stabilize long contexts
+        if self.steps_since_last_temperature_reduction >= Self::TEMPERATURE_REDUCTION_INTERVAL {
+            self.temperature *= Self::TEMPERATURE_REDUCTION_FACTOR;
+            self.logits_processor =
+                LogitsProcessor::new(self.seed, Some(self.temperature), Some(Self::TOP_P));
+            self.steps_since_last_temperature_reduction = 0;
+        }
+
         // Return the next token
         Some(next_token)
     }
@@ -233,7 +250,7 @@ impl InferIter {
     /// and return everything up to that point as an `InferCompletion`, as well as the end sequence that was reached
     pub fn complete<'a>(&mut self, end_sequences: &'a [&str]) -> InferCompletion<'a> {
         let time = Instant::now();
-        
+
         let mut tokens_generated = 0;
         let mut response = String::new();
         while let Some(token) = self.next_token()
@@ -255,7 +272,10 @@ impl InferIter {
                 response.truncate(pos);
 
                 let elapsed = time.elapsed().as_secs_f64();
-                self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+                self.tokens
+                    .model
+                    .borrow()
+                    .submit_timing(tokens_generated, elapsed);
 
                 return InferCompletion {
                     text: response,
@@ -265,7 +285,10 @@ impl InferIter {
         }
 
         let elapsed = time.elapsed().as_secs_f64();
-        self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+        self.tokens
+            .model
+            .borrow()
+            .submit_timing(tokens_generated, elapsed);
 
         InferCompletion {
             text: response,
@@ -302,7 +325,10 @@ impl InferIter {
         }
 
         let elapsed = time.elapsed().as_secs_f64();
-        self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+        self.tokens
+            .model
+            .borrow()
+            .submit_timing(tokens_generated, elapsed);
 
         response
     }
@@ -332,7 +358,10 @@ impl InferIter {
                         } else if c == close_bracket {
                             if bracket_count == 0 {
                                 let elapsed = time.elapsed().as_secs_f64();
-                                self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+                                self.tokens
+                                    .model
+                                    .borrow()
+                                    .submit_timing(tokens_generated, elapsed);
 
                                 return response;
                             }
@@ -346,7 +375,10 @@ impl InferIter {
         }
 
         let elapsed = time.elapsed().as_secs_f64();
-        self.tokens.model.borrow().submit_timing(tokens_generated, elapsed);
+        self.tokens
+            .model
+            .borrow()
+            .submit_timing(tokens_generated, elapsed);
 
         response
     }
@@ -360,6 +392,10 @@ impl InferIter {
         self.tokens = new_tokens;
         self.reached_eos = false;
         self.step = 0;
+        self.temperature = self.last_set_temperature;
+        self.steps_since_last_temperature_reduction = 0;
+        self.logits_processor =
+            LogitsProcessor::new(self.seed, Some(self.temperature), Some(Self::TOP_P));
         self.model.clear_cache();
     }
 
@@ -387,13 +423,16 @@ impl InferIter {
 
     /// Updates the inference parameters for this InferIter.
     pub fn update_params(&mut self, params: &InferParams) {
-        self.logits_processor = LogitsProcessor::new(
-            self.model.next_seed(),
-            Some(params.temperature),
-            Some(Self::TOP_P),
-        );
         self.repeat_penalty = params.repeat_penalty;
         self.repeat_scan_length = params.repeat_scan_length;
+        self.last_set_temperature = params.temperature;
+        self.temperature = params.temperature;
+        self.steps_since_last_temperature_reduction = 0;
+        self.logits_processor = LogitsProcessor::new(
+            self.model.next_seed(),
+            Some(self.temperature),
+            Some(Self::TOP_P),
+        );
     }
 }
 

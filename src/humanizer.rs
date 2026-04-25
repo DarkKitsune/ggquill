@@ -14,10 +14,9 @@ impl Humanizer {
         Your goal is to take a list of input strings or values separated by '|' and join them together into a string that a person can easily read and understand. \
         The final output should be a well formatted and grammatically correct string in double quotes which incorporates all of the inputs. \
         If the input values contain JSON, you should extract relevant information from the JSON and incorporate it into the final output string in a natural way.";
-        let input_schema = ChatSchema::new()
-            .with_text(Some("inputs".to_string()), "{values}");
-        let output_schema = ChatSchema::new()
-            .with_text(Some("joined".to_string()), "\"{\" => joined}");
+        let input_schema = ChatSchema::new().with_text(Some("inputs".to_string()), "{values}");
+        let output_schema =
+            ChatSchema::new().with_text(Some("joined".to_string()), "\"{\" => joined}");
 
         // Example pairs of input contexts and expected output values for the chat wrapper
         let examples = [
@@ -66,8 +65,14 @@ impl Humanizer {
         ];
 
         // Create the chat wrapper with the model, schemas, and examples
-        let chat_wrapper =
-            SimpleChatWrapper::new(model, &InferParams::new_logical(), system_schema, input_schema, output_schema, examples);
+        let chat_wrapper = SimpleChatWrapper::new(
+            model,
+            &InferParams::new_logical(),
+            system_schema,
+            input_schema,
+            output_schema,
+            examples,
+        );
 
         Self { chat_wrapper }
     }
@@ -87,7 +92,8 @@ impl Humanizer {
         };
 
         // Get the output from the chat wrapper using the input context
-        self.chat_wrapper.get_output(&input_context)
+        self.chat_wrapper
+            .get_output(&input_context)
             .into_captures()
             .remove("joined")
             .unwrap()
