@@ -342,7 +342,9 @@ impl ChatMessage {
     }
 
     /// Creates a new chat message from the system.
-    
+    pub fn system(content: impl Display) -> Self {
+        Self::new(ChatRole::System, content)
+    }
 
     /// Returns the sender of the message.
     pub fn sender(&self) -> &ChatRole {

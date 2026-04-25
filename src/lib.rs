@@ -5,7 +5,7 @@ pub mod chat_wrapper;
 pub mod data;
 pub mod inference;
 pub mod instructor;
-pub mod joiner;
+pub mod humanizer;
 pub mod model;
 pub mod model_type;
 pub mod pipeline;
@@ -39,12 +39,12 @@ mod tests {
         // String slices also work as schemas
         let system_schema = "You are a quiz master who answers trivia questions in the provided tone. \
             Answer concisely and accurately, and explain your answer further.";
-        let mut input_schema = ChatSchema::new();
-        input_schema.add_text(Some("Question".to_string()), "{input}");
-        input_schema.add_text(Some("Tone".to_string()), "Please answer in a {tone} tone.");
-        let mut output_schema = ChatSchema::new();
-        output_schema.add_text(Some("Answer".to_string()), "\"{\" => answer}\"");
-        output_schema.add_text(Some("Explanation".to_string()), "\"{\" => explanation}\"");
+        let input_schema = ChatSchema::new()
+            .with_text(Some("Question".to_string()), "{input}")
+            .with_text(Some("Tone".to_string()), "Please answer in a {tone} tone.");
+        let output_schema = ChatSchema::new()
+            .with_text(Some("Answer".to_string()), "\"{\" => answer}")
+            .with_text(Some("Explanation".to_string()), "\"{\" => explanation}");
 
         // Create some examples
         let examples = [
@@ -80,9 +80,8 @@ mod tests {
                 "input" => question,
                 "tone" => tone,
             };
-            let (output, input) = chat_wrapper.get_output(&input_context);
-            let output = output.captures();
-            println!("Input:\n{}\n\nAnswer: {}\n\nExplanation: {}\n\n======\n", input, output["answer"], output["explanation"]);
+            let output = chat_wrapper.get_output(&input_context).into_captures();
+            println!("Question: {}\nTone: {}\nAnswer: {}\nExplanation: {}\n\n======\n", question, tone, output["answer"], output["explanation"]);
         }
 
         // Print timings
@@ -179,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn joiner() {
+    fn humanizer() {
         const SEED: u64 = 24680;
         const ITEMS_TO_JOIN: &[&[&str]] = &[
             &["the cat", "sat on", "the mat"],
@@ -195,41 +194,34 @@ mod tests {
                 ".",
             ],
             &[
-                "To get to",
-                "a park",
-                "go",
-                "straight",
-                "two blocks",
-                "turn left",
-                "on right",
-                ".",
+                "The main things I noticed about the movie are",
+                "{\
+                    \"acting\": \"great\",\n\
+                    \"plot\": \"predictable\",\n\
+                    \"cinematography\": \"stunning\",\n\
+                    \"music\": \"forgettable\"\n\
+                }",
             ],
             &[
-                "The weather today is",
-                "sunny",
-                "with a high of 75 degrees",
-                "and a low of 55 degrees",
-                ".",
-            ],
-            &[
-                "func",
-                "test(",
-                "foo: number",
-                ") {",
-                "return foo * 2;",
-                "}",
-            ],
+                "The scene opens in",
+                "a bustling city street filled with people and cars.",
+                "Characters: [\
+                    {\"name\": \"Alice\", \"role\": \"protagonist\", \"traits\": [\"brave\", \"curious\"]},\n\
+                    {\"name\": \"Bob\", \"role\": \"antagonist\", \"traits\": [\"cunning\", \"ruthless\"]},\n\
+                    {\"name\": \"Eve\", \"role\": \"sidekick\", \"traits\": [\"loyal\", \"resourceful\"]}\n\
+                ]",
+            ]
         ];
 
         // Create the model
         let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
 
-        // Create a joiner
-        let mut joiner = Joiner::new(&mut model);
+        // Create a humanizer
+        let mut humanizer = Humanizer::new(&mut model);
 
         for items in ITEMS_TO_JOIN {
-            let result = joiner.join(items);
-            println!("{:?}\n{}\n\n", items, result);
+            let result = humanizer.join(items);
+            println!("Input: {}\nOutput: {}\n\n", items.join(" | "), result);
         }
     }
 

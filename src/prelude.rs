@@ -1,10 +1,11 @@
 pub use crate::actor::Actor;
 pub use crate::chat::{Chat, ChatMessage, ChatRole};
 pub use crate::chat_schema::{ChatSchema, create_chat_wrapper_examples, SCHEMA_PASSTHROUGH_INPUT};
+pub use crate::chat_wrapper::{ChatWrapper, SimpleChatWrapper};
 pub use crate::data::{JsonMap, JsonValue};
 pub use crate::inference::{InferIter, InferParams};
 pub use crate::instructor::{InstructionDefinition, Instructor, ParsedInstruction};
-pub use crate::joiner::Joiner;
+pub use crate::humanizer::Humanizer;
 pub use crate::model::Model;
 pub use crate::model_type::{ModelSize, ModelType};
 pub use crate::pipeline::Pipeline;
