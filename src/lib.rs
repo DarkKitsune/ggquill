@@ -5,7 +5,7 @@ pub mod chat_wrapper;
 pub mod data;
 pub mod humanizer;
 pub mod inference;
-pub mod instructor;
+pub mod json_builder;
 pub mod model;
 pub mod model_type;
 pub mod pipeline;
@@ -20,6 +20,30 @@ mod tests {
         chat_wrapper::{ChatWrapper, SimpleChatWrapper},
         prelude::*,
     };
+
+    #[test]
+    fn json_builder() {
+        const SEED: u64 = 13579;
+
+        // Create the model
+        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
+
+        // Create a JSON builder
+        let mut json_builder = JsonBuilder::new(&mut model);
+
+        // Define some instructions for building JSON and print the generated JSON outputs
+        let instructions_list = [
+            "Build a JSON object for a movie with the title 'Inception', the director 'Christopher Nolan', \
+            and a list of main actors including interesting tidbits about them.",
+            "Construct a JSON object for a recipe with the name 'Chocolate Chip Cookies', a list of ingredients with their quantities, \
+            and step-by-step instructions for how to make the cookies.",
+        ];
+
+        for instructions in instructions_list {
+            let output_json = json_builder.build_json(instructions, Some(5)).unwrap();
+            println!("Instructions: {}\nGenerated JSON:\n{}\n\n", instructions, serde_json::to_string_pretty(&output_json).unwrap());
+        }
+    }
 
     #[test]
     fn chat_wrapper() {
@@ -40,11 +64,11 @@ mod tests {
         let system_schema = "You are a quiz master who answers trivia questions in the provided tone. \
             Answer concisely and accurately, and explain your answer further.";
         let input_schema = ChatSchema::new()
-            .with_text(Some("Question".to_string()), "{input}")
-            .with_text(Some("Tone".to_string()), "Please answer in a {tone} tone.");
+            .with_text(Some("Question".to_string()), "<input>")
+            .with_text(Some("Tone".to_string()), "Please answer in a <tone> tone.");
         let output_schema = ChatSchema::new()
-            .with_text(Some("Answer".to_string()), "\"{\" => answer}")
-            .with_text(Some("Explanation".to_string()), "\"{\" => explanation}");
+            .with_text(Some("Answer".to_string()), "\"<\" :: answer>")
+            .with_text(Some("Explanation".to_string()), "\"<\" :: explanation>");
 
         // Create some examples
         let examples = [
@@ -77,7 +101,7 @@ mod tests {
             system_schema,
             input_schema,
             output_schema,
-            examples,
+            &examples,
         );
 
         // Get the output for each trivia question and print it

@@ -8,6 +8,9 @@ edition = "2024"
 [profile.test]
 inherits = "release"
 
+[profile.dev.package."*"]
+inherits = "release"
+
 [dependencies]
 ggmath = { path = "../ggmath" }
 anyhow = "1.0.98"

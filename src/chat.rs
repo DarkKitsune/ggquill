@@ -11,6 +11,7 @@ const COMPRESS_MEMORY_THRESHOLD: usize = MAX_TOKENS / 2;
 
 /// Represents a chat between user and model.
 pub struct Chat {
+    system_prompt: String,
     model_type: ModelType,
     infer_iter: InferIter,
     /// The messages in the chat. This should be synchronized with the context of the infer_iter.
@@ -34,13 +35,14 @@ impl Chat {
         let full_prompt =
             model
                 .model_type()
-                .create_chat_prompt(system_prompt, chat_history, extra_data.as_ref());
+                .create_chat_prompt(&system_prompt, chat_history, extra_data.as_ref());
         let initial_context = model.tokenize(full_prompt);
 
         // Create the InferIter for the chat with the initial context
         let infer_iter = model.infer_iter(initial_context, infer_params).unwrap();
 
         Self {
+            system_prompt: system_prompt.as_ref().to_string(),
             model_type: model.model_type(),
             infer_iter,
             chat_history: chat_history.to_vec(),
@@ -56,6 +58,7 @@ impl Chat {
         chat_history: Vec<ChatMessage>,
         long_term_memory: Option<String>,
     ) {
+        self.system_prompt = system_prompt.as_ref().to_string();
         // If long term memory is provided, set it in key "memory" of self.extra_data for the prompt template
         // Also create self.extra_data if it doesn't exist yet
         if let Some(long_term_memory) = &long_term_memory {
@@ -68,7 +71,7 @@ impl Chat {
 
         // Create the initial context for the chat using the model's prompt template and tokenize it
         let full_prompt = self.model_type.create_chat_prompt(
-            system_prompt,
+            &self.system_prompt,
             &chat_history,
             self.extra_data.as_ref(),
         );
@@ -83,6 +86,11 @@ impl Chat {
         self.infer_iter.reset(initial_context);
         self.chat_history = chat_history;
         self.long_term_memory = long_term_memory;
+    }
+
+    /// Gets the chat's current state (system prompt, chat history, and long term memory) as a tuple.
+    pub fn get_state(&self) -> (String, Vec<ChatMessage>, Option<String>) {
+        (self.system_prompt.clone(), self.chat_history.clone(), self.long_term_memory.clone())
     }
 
     /// Push an existing message to the chat history.

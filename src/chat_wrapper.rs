@@ -43,13 +43,13 @@ pub struct SimpleChatWrapper {
 
 impl SimpleChatWrapper {
     /// Creates a new SimpleChatWrapper with the provided model and schemas.
-    pub fn new(
+    pub fn new<'a>(
         model: &mut Model,
         infer_params: &InferParams,
         system_schema: impl Into<ChatSchema>,
         input_schema: impl Into<ChatSchema>,
         output_schema: impl Into<ChatSchema>,
-        example_pairs: impl IntoIterator<Item = (HashMap<String, String>, HashMap<String, String>)>,
+        example_pairs: impl IntoIterator<Item = &'a(HashMap<String, String>, HashMap<String, String>)>,
     ) -> Self {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
@@ -70,6 +70,21 @@ impl SimpleChatWrapper {
             output_schema,
         }
     }
+
+    /// Get the current state of the chat wrapper as a ChatState which can be used to reset the chat wrapper back to this state later if needed.
+    pub fn get_state(&self) -> ChatState {
+        let (system_prompt, chat_history, long_term_memory) = self.chat.get_state();
+        ChatState {
+            system_prompt,
+            chat_history,
+            long_term_memory,
+        }
+    }
+
+    /// Resets the chat wrapper to a previous state captured by `get_state()`.
+    pub fn reset(&mut self, state: &ChatState) {
+        self.chat.reset(&state.system_prompt, state.chat_history.clone(), state.long_term_memory.clone());
+    }
 }
 
 impl ChatWrapper for SimpleChatWrapper {
@@ -88,4 +103,12 @@ impl ChatWrapper for SimpleChatWrapper {
     fn chat_mut(&mut self) -> &mut Chat {
         &mut self.chat
     }
+}
+
+/// Represents a saved state of a ChatWrapper
+#[derive(Clone)]
+pub struct ChatState {
+    pub system_prompt: String,
+    pub chat_history: Vec<ChatMessage>,
+    pub long_term_memory: Option<String>,
 }

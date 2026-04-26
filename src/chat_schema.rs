@@ -7,7 +7,7 @@ use crate::{chat::ChatMessage, prelude::InferIter};
 
 pub const SCHEMA_PASSTHROUGH_INPUT: &str = "input";
 
-/// Helper function for parsing context keys in the format "{key}" and substituting
+/// Helper function for parsing context keys in the format "<key>" and substituting
 /// them with their JSON values from the context.
 fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> String {
     // Build the patterns and replacements for the Aho-Corasick algorithm
@@ -15,8 +15,8 @@ fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> St
         .iter()
         .flat_map(|(k, v)| {
             [
-                (format!("{{{}}}", k), v.clone()),
-                (format!("{{ {} }}", k), v.clone()),
+                (format!("<{}>", k), v.clone()),
+                (format!("< {} >", k), v.clone()),
             ]
         })
         .unzip();
@@ -26,25 +26,25 @@ fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> St
     ac.replace_all(input, &replacements)
 }
 
-/// Helper function for finding context keys in the format "{key}" and returning them as a vector of strings.
+/// Helper function for finding context keys in the format "<key>" and returning them as a vector of strings.
 fn find_context_keys<'a>(input: &'a str) -> Vec<Match<'a>> {
     // Use a regex to find all context keys in the input string
-    let re = regex::Regex::new(r"\{([^}]*)\}").unwrap();
+    let re = regex::Regex::new(r"<([^>]*)>").unwrap();
     re.captures_iter(input)
         .filter_map(|cap| cap.get(1))
         .collect()
 }
 
 /// Helper function for creating example user messages and responses based on the input and output schemas, which can be used to provide examples to the model.
-pub fn create_chat_wrapper_examples(
+pub fn create_chat_wrapper_examples<'a>(
     input_schema: &ChatSchema,
     output_schema: &ChatSchema,
-    input_output_pairs: impl IntoIterator<Item = (HashMap<String, String>, HashMap<String, String>)>,
+    input_output_pairs: impl IntoIterator<Item = &'a (HashMap<String, String>, HashMap<String, String>)>,
 ) -> Vec<ChatMessage> {
     input_output_pairs
         .into_iter()
         .flat_map(move |(input_context, output_values)| {
-            let input_string = input_schema.to_input_string(&input_context);
+            let input_string = input_schema.to_input_string(input_context);
             let output_string = output_schema.to_output_string(output_values);
             [
                 ChatMessage::user(input_string),
@@ -87,6 +87,11 @@ impl SchemaWriteOutput {
         self.captures
     }
 
+    /// Takes ownership of a specific capture by key, if it exists, returning it as an Option<String>.
+    pub fn into_capture(mut self, key: &str) -> Option<String> {
+        self.captures.remove(key)
+    }
+
     /// Takes ownership of the full string, returning it as a String.
     pub fn into_full_string(self) -> String {
         self.full_string
@@ -103,9 +108,9 @@ impl AsRef<str> for SchemaWriteOutput {
 /// Schemas are made up of `SchemaBlock`s, which are individual components of the schema that define specific parts
 /// of the input or output. Each block contributes to the model input or output in a specific way,
 /// and the combination of blocks defines the overall structure and content of the input or output.
-/// Context keys in the format {key} can usually be used in the text of a block to reference values from the context,
+/// Context keys in the format <key> can usually be used in the text of a block to reference values from the context,
 /// which is passed to the input schema. For the output schema the keys are instead replaced by inference using the key contents as an end sequence.
-/// If an output key ends with a "=>" and then a key identifier, then the inferred value will be captured and returned in the output with said key.
+/// If an output key ends with a "::" and then a key identifier, then the inferred value will be captured and returned in the output with said key.
 pub struct ChatSchema {
     blocks: Vec<Box<dyn SchemaBlock>>,
 }
@@ -123,12 +128,12 @@ impl ChatSchema {
 
     /// Creates a passthrough input schema which simply represents the input string.
     pub fn passthrough_input() -> Self {
-        Self::new().with_text(None, format!("{{{}}}", SCHEMA_PASSTHROUGH_INPUT))
+        Self::new().with_text(None, format!("<{}>", SCHEMA_PASSTHROUGH_INPUT))
     }
 
     /// Creates a passthrough output schema which simply represents the output string.
     pub fn passthrough_output() -> Self {
-        Self::new().with_text(None, "{}")
+        Self::new().with_text(None, format!("<::{}>", SCHEMA_PASSTHROUGH_INPUT))
     }
 
     /// Gets the blocks that make up the schema.
@@ -145,6 +150,20 @@ impl ChatSchema {
     /// Also returns self to allow for chaining.
     pub fn with_text(mut self, label: Option<String>, text: impl Display) -> Self {
         self.add_block(Box::new(TextBlock::new(label, text)));
+        self
+    }
+
+    /// Add a list block to the schema with the given label, whether it is numbered, and items (separated by '|').
+    /// Also returns self to allow for chaining.
+    pub fn with_list(mut self, label: Option<String>, numbered: bool, items: impl Display) -> Self {
+        self.add_block(Box::new(ListBlock::new(label, numbered, items)));
+        self
+    }
+
+    /// Add a JSON block to the schema with the given label and key name.
+    /// Also returns self to allow for chaining.
+    pub fn with_json(mut self, label: Option<String>, key_name: impl Display) -> Self {
+        self.add_block(Box::new(JsonBlock::new(label, key_name)));
         self
     }
 
@@ -193,22 +212,22 @@ impl ChatSchema {
     }
 
     /// Converts the schema to a string as an output, replacing each inferable key with the corresponding value in `output_captures`.
-    pub fn to_output_string(&self, output_captures: HashMap<String, String>) -> String {
+    pub fn to_output_string(&self, output_captures: &HashMap<String, String>) -> String {
         let mut written_so_far = String::new();
         for (i, block) in self.blocks.iter().enumerate() {
             // For each block, replace any inferable keys with the next value from the outputs iterator
-            let block_string = block.to_raw_string();
+            let block_string = block.to_raw_string(true, output_captures);
             let keys = find_context_keys(&block_string);
             if keys.is_empty() {
                 written_so_far.push_str(&block_string);
             } else {
                 let mut last_index = 0;
                 for key in keys {
-                    // If the key contains a capture identifier (indicated by "=>"), split the key and use the part after "=>" as the capture key
-                    // The part before "=>" is used as the end sequence later
+                    // If the key contains a capture identifier (indicated by "::"), split the key and use the part after "::" as the capture key
+                    // The part before "::" is used as the end sequence later
                     let key_str = key.as_str();
                     let (end_sequences_str, capture_key) = if let Some(split_index) =
-                        key_str.find("=>")
+                        key_str.find("::")
                     {
                         (
                             key_str[..split_index].trim(),
@@ -216,13 +235,13 @@ impl ChatSchema {
                         )
                     } else {
                         panic!(
-                            "Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'",
+                            "Output schema keys must be in the format in the format <end|sequences|here :: capture_key_here> to capture inferred values, but key '{}' does not contain '::'",
                             key_str
                         );
                     };
 
-                    let start = key.start() - 1; // Include the opening '{'
-                    let end = key.end() + 1; // Include the closing '}'
+                    let start = key.start() - 1; // Include the opening '<'
+                    let end = key.end() + 1; // Include the closing '>'
 
                     // Push the string before the key
                     if start > last_index {
@@ -303,11 +322,13 @@ pub trait SchemaBlock {
     }
 
     /// Converts the block to a raw string for input or output without substituting context keys.
-    fn to_raw_string(&self) -> String;
+    /// This is used as an intermediate step for writing both inputs and outputs, and will define the structure of the block.
+    /// Any <key> in the raw string will be treated as a context key for input schemas, and as an inferable key for output schemas.
+    fn to_raw_string(&self, is_output: bool, context: &HashMap<String, String>) -> String;
 
     /// Writes the block to an InferIter as an input after substituting context map keys, using the given context map.
     fn write_input(&self, iter: &mut InferIter, context: &HashMap<String, String>) -> String {
-        let raw = self.to_raw_string();
+        let raw = self.to_raw_string(false, context);
         let substituted = substitute_context_keys(&raw, context);
         iter.push_str(&substituted);
         substituted
@@ -315,13 +336,13 @@ pub trait SchemaBlock {
 
     // Converts the block to an input string after substituting context map keys, using the given context map.
     fn to_input_string(&self, context: &HashMap<String, String>) -> String {
-        substitute_context_keys(&self.to_raw_string(), context)
+        substitute_context_keys(&self.to_raw_string(false, context), context)
     }
 
     /// Writes the block to an InferIter, using the given context map.
     fn write_output(&self, iter: &mut InferIter, captures: &mut HashMap<String, String>) -> String {
         let mut written_so_far = String::new();
-        let raw = self.to_raw_string();
+        let raw = self.to_raw_string(true, captures);
 
         // Find all keys in the raw string and use them as end sequences for inference, then replace them with the inferred values
         let keys = find_context_keys(&raw);
@@ -336,23 +357,23 @@ pub trait SchemaBlock {
         // Otherwise write the string up to the each key, then infer until the matching end sequence is found, and repeat until no keys remain.
         let mut last_index = 0;
         for key in keys {
-            // If the key contains a capture identifier (indicated by "=>"), split the key and use the part after "=>" as the capture key
-            // The part before "=>" is used as the end sequence for inference as normal
+            // If the key contains a capture identifier (indicated by "::"), split the key and use the part after "::" as the capture key
+            // The part before "::" is used as the end sequence for inference as normal
             let key_str = key.as_str();
-            let (end_sequences_str, capture_key) = if let Some(split_index) = key_str.find("=>") {
+            let (end_sequences_str, capture_key) = if let Some(split_index) = key_str.find("::") {
                 (
                     key_str[..split_index].trim(),
                     key_str[split_index + 2..].trim(),
                 )
             } else {
                 panic!(
-                    "Output schema keys must be in the format in the format {{end|sequences|here => capture_key_here}} to capture inferred values, but key '{}' does not contain '=>'",
+                    "Output schema keys must be in the format in the format <end|sequences|here :: capture_key_here> to capture inferred values, but key '{}' does not contain '::'",
                     key_str
                 );
             };
 
-            let start = key.start() - 1; // Include the opening '{'
-            let end = key.end() + 1; // Include the closing '}'
+            let start = key.start() - 1; // Include the opening '<'
+            let end = key.end() + 1; // Include the closing '>'
 
             // Push the string before the key
             if start > last_index {
@@ -392,6 +413,15 @@ pub trait SchemaBlock {
     }
 }
 
+/// Helper function for generating the right type of key depending on whether the block is an input or output
+pub fn key_for_block(key: &str, end_sequences: &[&str], is_output: bool) -> String {
+    if is_output {
+        format!("<{} :: {}>", end_sequences.join("|"), key)
+    } else {
+        format!("<{}>{}", key, end_sequences.first().cloned().unwrap_or_default())
+    }
+}
+
 /// Simply represents a block of text in the schema, which can be used to provide instructions, context, or other information to the model.
 #[derive(Clone)]
 pub struct TextBlock {
@@ -417,12 +447,104 @@ impl SchemaBlock for TextBlock {
         self.label.as_deref()
     }
 
-    fn to_raw_string(&self) -> String {
+    fn to_raw_string(&self, _is_output: bool, _context: &HashMap<String, String>) -> String {
         let label_part = if let Some(label) = &self.label {
             format!("**{}:**\n", label)
         } else {
             String::new()
         };
         format!("{}{}", label_part, self.text)
+    }
+}
+
+/// Represents a list of items in the schema, which can be used to provide instructions, context, or other information.
+/// Items should be in the format "item0|item1|item2" and will be split by '|' to create the list.
+#[derive(Clone)]
+pub struct ListBlock {
+    label: Option<String>,
+    numbered: bool,
+    items: String,
+}
+
+impl ListBlock {
+    pub fn new(label: Option<String>, numbered: bool, items: impl Display) -> Self {
+        Self { label, numbered, items: items.to_string() }
+    }
+}
+
+impl SchemaBlock for ListBlock {
+    fn clone_box(&self) -> Box<dyn SchemaBlock> {
+        Box::new(self.clone())
+    }
+
+    fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    fn to_raw_string(&self, _is_output: bool, context: &HashMap<String, String>) -> String {
+        let label_part = if let Some(label) = &self.label {
+            format!("**{}:**\n", label)
+        } else {
+            String::new()
+        };
+        let items_substituted = substitute_context_keys(&self.items, context);
+        let items_part = items_substituted
+            .split('|')
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+            .enumerate()
+            .map(|(i, item)| {
+                if self.numbered {
+                    format!("{}. {}", i + 1, item)
+                } else {
+                    format!("- {}", item)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("{}{}", label_part, items_part)
+    }
+}
+
+/// Represents a JSON object in the schema.
+#[derive(Clone)]
+pub struct JsonBlock {
+    label: Option<String>,
+    key_name: String,
+}
+
+impl JsonBlock {
+    pub fn new(label: Option<String>, key_name: impl Display) -> Self {
+        Self { label, key_name: key_name.to_string() }
+    }
+}
+
+impl SchemaBlock for JsonBlock {
+    fn clone_box(&self) -> Box<dyn SchemaBlock> {
+        Box::new(self.clone())
+    }
+
+    fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    fn to_raw_string(&self, is_output: bool, _context: &HashMap<String, String>) -> String {
+        // Start with the label if it exists
+        let mut raw_string = if let Some(label) = &self.label {
+            format!("**{}:**\n", label)
+        } else {
+            String::new()
+        };
+        
+        // Then start a code block and then the JSON string with an opening quote and brace
+        raw_string.push_str("```\nconst json = \"{\n");
+        
+        // Add an inferable key if output, or a context key if input, using the key name
+        raw_string.push_str(&key_for_block(&self.key_name, &["}\"", "}\n\""], is_output));
+
+        // Then end the code block
+        raw_string.push_str("\n```");
+
+        raw_string
     }
 }
