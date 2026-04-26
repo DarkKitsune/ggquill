@@ -327,11 +327,16 @@ impl InferIter {
     }
 
     /// Run the iterator until the current bracket is closed and return everything up to that point as a `String`.
-    pub fn complete_bracket(&mut self, open_bracket: char, close_bracket: char) -> String {
+    /// The end sequence will always be None for this method, since it is determined by the brackets rather than a specific string.
+    pub fn complete_bracket<'a>(&mut self, open_bracket: char, close_bracket: char) -> InferCompletion<'a> {
         let time = Instant::now();
 
-        let mut response = String::new();
-        let mut bracket_count = 0;
+        // First start the response with the open bracket
+        let mut response = open_bracket.to_string();
+        self.push_str(&response);
+
+        // Then run until we close the bracket, keeping track of nested brackets and ignoring brackets in strings
+        let mut bracket_count = 1;
         let mut in_string = false;
         let mut escaped_last = false;
         let mut tokens_generated = 0;
@@ -349,21 +354,24 @@ impl InferIter {
                         if c == open_bracket {
                             bracket_count += 1;
                         } else if c == close_bracket {
-                            if bracket_count == 0 {
-                                let elapsed = time.elapsed().as_secs_f64();
-                                self.tokens
-                                    .model
-                                    .borrow()
-                                    .submit_timing(tokens_generated, elapsed);
-
-                                return response;
-                            }
                             bracket_count -= 1;
                         }
                     }
                     escaped_last = false;
                 }
                 response.push(c);
+                if bracket_count < 1 {
+                    let elapsed = time.elapsed().as_secs_f64();
+                    self.tokens
+                        .model
+                        .borrow()
+                        .submit_timing(tokens_generated, elapsed);
+
+                    return InferCompletion {
+                        text: response,
+                        end_sequence: None,
+                    };
+                }
             }
         }
 
@@ -373,7 +381,10 @@ impl InferIter {
             .borrow()
             .submit_timing(tokens_generated, elapsed);
 
-        response
+        InferCompletion {
+            text: response,
+            end_sequence: None,
+        }
     }
 
     /// Completely reset the context, starting the iterator over again with the given tokens as the new context.
@@ -387,6 +398,7 @@ impl InferIter {
         self.step = 0;
         self.temperature = self.last_set_temperature;
         self.steps_since_last_temperature_reduction = 0;
+        self.seed = self.seed.wrapping_add(1);
         self.logits_processor =
             LogitsProcessor::new(self.seed, Some(self.temperature), Some(Self::TOP_P));
         self.model.clear_cache();

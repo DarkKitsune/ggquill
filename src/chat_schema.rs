@@ -395,7 +395,12 @@ pub trait SchemaBlock {
                 .collect();
 
             // Infer until the end sequence is found, this will end up in the InferIter anyway so no need to push
-            let inferred = iter.complete(&end_sequences);
+            // If the only end sequence is "{}" then use InferIter::complete_bracket instead for JSON parsing
+            let inferred = if end_sequences.len() == 1 && end_sequences[0] == "{}" {
+                iter.complete_bracket('{', '}')
+            } else {
+                iter.complete(&end_sequences)
+            };
             // Save the inferred value in the captures map with the capture key
             captures.insert(capture_key.to_string(), inferred.result().to_string());
             // Push the end sequence onto the inferred string because it is not normally included
@@ -540,7 +545,7 @@ impl SchemaBlock for JsonBlock {
         raw_string.push_str("```\nconst json = \"{\n");
         
         // Add an inferable key if output, or a context key if input, using the key name
-        raw_string.push_str(&key_for_block(&self.key_name, &["}\"", "}\n\""], is_output));
+        raw_string.push_str(&key_for_block(&self.key_name, &["{}"], is_output));
 
         // Then end the code block
         raw_string.push_str("\n```");
