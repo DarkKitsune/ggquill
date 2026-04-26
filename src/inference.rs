@@ -328,7 +328,11 @@ impl InferIter {
 
     /// Run the iterator until the current bracket is closed and return everything up to that point as a `String`.
     /// The end sequence will always be None for this method, since it is determined by the brackets rather than a specific string.
-    pub fn complete_bracket<'a>(&mut self, open_bracket: char, close_bracket: char) -> InferCompletion<'a> {
+    pub fn complete_bracket<'a>(
+        &mut self,
+        open_bracket: char,
+        close_bracket: char,
+    ) -> InferCompletion<'a> {
         let time = Instant::now();
 
         // First start the response with the open bracket

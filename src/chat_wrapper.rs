@@ -49,7 +49,7 @@ impl SimpleChatWrapper {
         system_schema: impl Into<ChatSchema>,
         input_schema: impl Into<ChatSchema>,
         output_schema: impl Into<ChatSchema>,
-        example_pairs: impl IntoIterator<Item = &'a(HashMap<String, String>, HashMap<String, String>)>,
+        example_pairs: impl IntoIterator<Item = &'a (HashMap<String, String>, HashMap<String, String>)>,
     ) -> Self {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
@@ -83,7 +83,11 @@ impl SimpleChatWrapper {
 
     /// Resets the chat wrapper to a previous state captured by `get_state()`.
     pub fn reset(&mut self, state: &ChatState) {
-        self.chat.reset(&state.system_prompt, state.chat_history.clone(), state.long_term_memory.clone());
+        self.chat.reset(
+            &state.system_prompt,
+            state.chat_history.clone(),
+            state.long_term_memory.clone(),
+        );
     }
 }
 

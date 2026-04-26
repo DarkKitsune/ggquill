@@ -324,6 +324,7 @@ pub trait SchemaBlock {
     /// Converts the block to a raw string for input or output without substituting context keys.
     /// This is used as an intermediate step for writing both inputs and outputs, and will define the structure of the block.
     /// Any <key> in the raw string will be treated as a context key for input schemas, and as an inferable key for output schemas.
+    /// An end sequence of "{}" in inferable keys will indicate a JSON object and trigger special parsing logic.
     fn to_raw_string(&self, is_output: bool, context: &HashMap<String, String>) -> String;
 
     /// Writes the block to an InferIter as an input after substituting context map keys, using the given context map.
@@ -423,7 +424,11 @@ pub fn key_for_block(key: &str, end_sequences: &[&str], is_output: bool) -> Stri
     if is_output {
         format!("<{} :: {}>", end_sequences.join("|"), key)
     } else {
-        format!("<{}>{}", key, end_sequences.first().cloned().unwrap_or_default())
+        format!(
+            "<{}>{}",
+            key,
+            end_sequences.first().cloned().unwrap_or_default()
+        )
     }
 }
 
@@ -473,7 +478,11 @@ pub struct ListBlock {
 
 impl ListBlock {
     pub fn new(label: Option<String>, numbered: bool, items: impl Display) -> Self {
-        Self { label, numbered, items: items.to_string() }
+        Self {
+            label,
+            numbered,
+            items: items.to_string(),
+        }
     }
 }
 
@@ -520,7 +529,10 @@ pub struct JsonBlock {
 
 impl JsonBlock {
     pub fn new(label: Option<String>, key_name: impl Display) -> Self {
-        Self { label, key_name: key_name.to_string() }
+        Self {
+            label,
+            key_name: key_name.to_string(),
+        }
     }
 }
 
@@ -540,10 +552,10 @@ impl SchemaBlock for JsonBlock {
         } else {
             String::new()
         };
-        
+
         // Then start a code block and then the JSON string with an opening quote and brace
         raw_string.push_str("```\nconst json = \"{\n");
-        
+
         // Add an inferable key if output, or a context key if input, using the key name
         raw_string.push_str(&key_for_block(&self.key_name, &["{}"], is_output));
 

@@ -11,7 +11,8 @@ impl JsonBuilder {
         let system_schema = "You are a helpful assistant that builds JSON objects based on the provided instructions. \
             Follow the instructions carefully to construct the JSON object. \
             Ensure that the JSON is well-formed and only includes relevant fields based on the instructions.";
-        let input_schema = ChatSchema::new().with_text(Some("Instructions".to_string()), "<instructions>");
+        let input_schema =
+            ChatSchema::new().with_text(Some("Instructions".to_string()), "<instructions>");
         let output_schema = ChatSchema::new().with_json(Some("JSON".to_string()), "json");
 
         // Example pairs of input instructions and expected output JSON for the chat wrapper
@@ -64,13 +65,17 @@ r#"{
     /// Builds a JSON object based on the provided instructions and returns it as a string.
     /// Returns None if a valid JSON object could not be generated after the given number of attempts.
     /// If `max_attempts` is None then it will keep trying indefinitely until a valid JSON is generated.
-    pub fn build_json(&mut self, instructions: &str, max_attempts: Option<usize>) -> Option<JsonValue> {
+    pub fn build_json(
+        &mut self,
+        instructions: &str,
+        max_attempts: Option<usize>,
+    ) -> Option<JsonValue> {
         // Create the input context for the chat wrapper using the provided instructions
         let input_context = string_map! {
             "instructions" => instructions,
         };
 
-        // Save the chat wrapper state in case we need to retry generating the output JSON 
+        // Save the chat wrapper state in case we need to retry generating the output JSON
         let saved_state = self.chat_wrapper.get_state();
 
         // Loop to keep trying to generate a valid JSON output until we succeed or reach the maximum number of attempts
@@ -78,7 +83,7 @@ r#"{
         loop {
             let json_output = self.chat_wrapper.get_output(&input_context);
             let captures = json_output.captures();
-            
+
             // Try parsing the JSON string to ensure it's well-formed, and return it as a string
             if let Ok(parsed_json) = serde_json::from_str::<JsonValue>(&captures["json"]) {
                 break Some(parsed_json);
@@ -88,7 +93,9 @@ r#"{
 
                 // Then increment the attempt counter and check if we've reached the maximum number of attempts (if specified)
                 attempts += 1;
-                if let Some(max_attempts) = max_attempts && attempts >= max_attempts {
+                if let Some(max_attempts) = max_attempts
+                    && attempts >= max_attempts
+                {
                     break None;
                 }
             }

@@ -32,10 +32,11 @@ impl Chat {
         extra_data: Option<JsonMap>,
     ) -> Self {
         // Create the initial context for the chat using the model's prompt template and tokenize it
-        let full_prompt =
-            model
-                .model_type()
-                .create_chat_prompt(&system_prompt, chat_history, extra_data.as_ref());
+        let full_prompt = model.model_type().create_chat_prompt(
+            &system_prompt,
+            chat_history,
+            extra_data.as_ref(),
+        );
         let initial_context = model.tokenize(full_prompt);
 
         // Create the InferIter for the chat with the initial context
@@ -90,7 +91,11 @@ impl Chat {
 
     /// Gets the chat's current state (system prompt, chat history, and long term memory) as a tuple.
     pub fn get_state(&self) -> (String, Vec<ChatMessage>, Option<String>) {
-        (self.system_prompt.clone(), self.chat_history.clone(), self.long_term_memory.clone())
+        (
+            self.system_prompt.clone(),
+            self.chat_history.clone(),
+            self.long_term_memory.clone(),
+        )
     }
 
     /// Push an existing message to the chat history.
