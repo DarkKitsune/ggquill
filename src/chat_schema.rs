@@ -424,10 +424,19 @@ pub fn key_for_block(key: &str, end_sequences: &[&str], is_output: bool) -> Stri
     if is_output {
         format!("<{} :: {}>", end_sequences.join("|"), key)
     } else {
+        let end_sequence = end_sequences.first().cloned().unwrap_or_default();
+        
+        // Special behavior for input keys with "{}" as the end sequence, to ignore the end sequence
+        let end_sequence = if end_sequence == "{}" {
+            ""
+        } else {
+            end_sequence
+        };
+
         format!(
             "<{}>{}",
             key,
-            end_sequences.first().cloned().unwrap_or_default()
+            end_sequence
         )
     }
 }

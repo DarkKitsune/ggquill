@@ -42,7 +42,7 @@ mod tests {
         for instructions in instructions_list {
             let output_json = json_builder.build_json(instructions, Some(5)).unwrap();
             println!(
-                "Instructions: {}\nGenerated JSON:\n{}\n\n",
+                "\nInstructions: {}\nGenerated JSON:\n{}\n",
                 instructions,
                 serde_json::to_string_pretty(&output_json).unwrap()
             );

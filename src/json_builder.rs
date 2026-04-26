@@ -11,8 +11,10 @@ impl JsonBuilder {
         let system_schema = "You are a helpful assistant that builds JSON objects based on the provided instructions. \
             Follow the instructions carefully to construct the JSON object. \
             Ensure that the JSON is well-formed and only includes relevant fields based on the instructions.";
+        // Input schema defines the structure of the user instructions, which is just a labelled text block containing the instructions
         let input_schema =
             ChatSchema::new().with_text(Some("Instructions".to_string()), "<instructions>");
+        // Output schema defines the structure of the assistant response, which is a labelled JSON block in this case
         let output_schema = ChatSchema::new().with_json(Some("JSON".to_string()), "json");
 
         // Example pairs of input instructions and expected output JSON for the chat wrapper
@@ -32,7 +34,7 @@ impl JsonBuilder {
                 string_map! {
                     "json" =>
 r#"{
-    "title": "One Night With a Fire Elemental",
+    "title": "One Upon The Moon",
     "author": "Jasmine Silver",
     "characters": [
         {
