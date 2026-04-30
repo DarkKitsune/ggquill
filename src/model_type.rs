@@ -196,14 +196,17 @@ impl ModelType {
         if !how_to_respond.is_empty() {
             prompt.push_str("\n**How you should respond:**\n<how_to_respond>\n");
             for instruction in how_to_respond {
+                // Replace newlines in the instruction with spaces so that it doesn't break the formatting of the bullet points
+                let instruction = instruction.replace("\n", " ");
+
+                // Push the instruction to the prompt as a bullet point
                 prompt.push_str(&format!("- {}\n", instruction));
             }
             prompt.push_str("</how_to_respond>\n");
         }
 
-        // If there is extra data to provide to the model, then we add it to the system prompt in a special <knowledge> block
+        // If there is extra data to provide to the model, then we add it to the system prompt in a <knowledge> block
         if let Some(extra_data) = extra_data {
-            // Start a <knowledge> block (totally a real thing right?)
             prompt.push_str("\n**What you know:**\n<knowledge>\n");
 
             // Add each key-value pair in the extra data with formatting as a bullet list
@@ -211,8 +214,11 @@ impl ModelType {
                 // Replace newlines in the key with spaces so that it doesn't break the formatting of the bullet points
                 let key = key.replace("\n", " ");
 
-                // Replace backticks in the value with escaped backticks so that they don't break the code block formatting
+                // The value will be in a code block, so replace backticks in the value with escaped backticks
                 let value = value.replace("`", "\\`");
+                
+                // For each newline in value we need to add an extra indentation level so that the formatting of the code block isn't broken by newlines
+                let value = value.replace("\n", "\n    ");
 
                 // Push the key-value pair to the prompt as a bullet point with the key in bold and the value in an indented code block
                 prompt.push_str(&format!("- **{}**\n    `{}`\n", key, value));
