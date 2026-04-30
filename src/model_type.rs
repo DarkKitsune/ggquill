@@ -5,12 +5,11 @@ use candle_core::quantized::gguf_file;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
-use candle_transformers::models::qwen2::ModelForCausalLM as Qwen2;
 use candle_transformers::models::qwen3::ModelForCausalLM as Qwen3;
 use hf_hub::api::sync::Api;
 
 use crate::chat::{ChatMessage, ChatRole};
-use crate::data::JsonMap;
+use crate::data::StringMap;
 use crate::model::{DynConfig, ModelPipeline};
 
 /// Represents the size of model to use.
@@ -25,74 +24,69 @@ pub enum ModelSize {
     Large,
 }
 
+/// Represents the base architecture of the model
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModelArchitecture {
+    Qwen3,
+}
+
 /// Represents the type of model to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelType {
-    Qwen25Instruct,
     Qwen3(ModelSize),
-    Qwen3InstructQuantized,
-    Qwen3InstructAbl,
+    Qwen3Instruct,
     Qwen3Special,
 }
 
 impl ModelType {
+    /// Get the base architecture of this model type.
+    pub fn architecture(&self) -> ModelArchitecture {
+        match self {
+            ModelType::Qwen3(_) | ModelType::Qwen3Instruct | ModelType::Qwen3Special => {
+                ModelArchitecture::Qwen3
+            }
+        }
+    }
+
     /// Returns true if this model type supports chat functionality.
     pub fn can_chat(&self) -> bool {
-        match self {
-            ModelType::Qwen25Instruct
-            | ModelType::Qwen3(_)
-            | ModelType::Qwen3InstructQuantized
-            | ModelType::Qwen3InstructAbl
-            | ModelType::Qwen3Special => true,
+        match self.architecture() {
+            ModelArchitecture::Qwen3 => true,
         }
     }
 
     /// Returns true if this model requires the think block to be present regardless.
     pub fn must_use_think(&self) -> bool {
-        matches!(
-            self,
-            ModelType::Qwen3(_) | ModelType::Qwen3InstructQuantized
-        )
+        matches!(self.architecture(), ModelArchitecture::Qwen3)
     }
 
     /// Returns true if this is a GGUF quantized model type, which requires special handling
     pub fn is_gguf_quantized(&self) -> bool {
-        matches!(
-            self,
-            ModelType::Qwen3InstructQuantized | ModelType::Qwen3Special
-        )
+        matches!(self, ModelType::Qwen3Instruct | ModelType::Qwen3Special)
     }
 
     pub fn model_repo(&self) -> ModelRepo {
         match self {
-            ModelType::Qwen25Instruct => ModelRepo::hub("Qwen/Qwen2.5-1.5B-Instruct"),
             ModelType::Qwen3(model_size) => match model_size {
                 ModelSize::Small => ModelRepo::hub("Qwen/Qwen3-1.7B"),
                 ModelSize::Medium => ModelRepo::hub("Qwen/Qwen3-4B"),
                 ModelSize::Large => ModelRepo::hub("Qwen/Qwen3-8B"),
             },
-            ModelType::Qwen3InstructQuantized => {
+            ModelType::Qwen3Instruct => {
                 ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF")
             }
             ModelType::Qwen3Special => {
                 ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF")
-            }
-            ModelType::Qwen3InstructAbl => {
-                ModelRepo::hub("Goekdeniz-Guelmez/Josiefied-Qwen3-4B-abliterated-v2")
             }
         }
     }
 
     pub fn tokenizer_repo(&self) -> ModelRepo {
         match self {
-            ModelType::Qwen3InstructQuantized => ModelRepo::hub("Qwen/Qwen3-14B"),
+            ModelType::Qwen3Instruct => ModelRepo::hub("Qwen/Qwen3-14B"),
             ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
             _ => self.model_repo(),
         }
-    }
-
-    pub fn tokenizer_json_name(&self) -> &'static str {
-        "tokenizer.json"
     }
 
     pub fn model_names(&self) -> &[&'static str] {
@@ -115,14 +109,13 @@ impl ModelType {
                     "model-00005-of-00005.safetensors",
                 ],
             },
-            ModelType::Qwen3InstructQuantized => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q3_K_M.gguf"],
+            ModelType::Qwen3Instruct => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q3_K_L.gguf"],
             ModelType::Qwen3Special => &["qwen3-4b-instruct-special-q4_k_m-imat.gguf"],
-            ModelType::Qwen3InstructAbl => &[
-                "model-00001-of-00002.safetensors",
-                "model-00002-of-00002.safetensors",
-            ],
-            _ => &["model.safetensors"],
         }
+    }
+
+    pub fn tokenizer_json_name(&self) -> &'static str {
+        "tokenizer.json"
     }
 
     /// Load and create a config for this type of model.
@@ -130,15 +123,11 @@ impl ModelType {
         let config_filename = repo.file_paths(&["config.json"], api).pop().unwrap();
         let config = std::fs::read_to_string(config_filename).unwrap();
         match self {
-            ModelType::Qwen25Instruct => {
-                let config = serde_json::from_str(&config).unwrap();
-                DynConfig::Qwen2(config)
-            }
-            ModelType::Qwen3(_) | ModelType::Qwen3Special | ModelType::Qwen3InstructAbl => {
+            ModelType::Qwen3(_) | ModelType::Qwen3Special => {
                 let config = serde_json::from_str(&config).unwrap();
                 DynConfig::Qwen3(config)
             }
-            ModelType::Qwen3InstructQuantized => {
+            ModelType::Qwen3Instruct => {
                 unreachable!("GGUF quantized models should not use create_config")
             }
         }
@@ -147,13 +136,10 @@ impl ModelType {
     /// Create a pipeline for this type of model.
     pub fn create_pipeline(&self, config: &DynConfig, var: VarBuilder) -> ModelPipeline {
         match self {
-            ModelType::Qwen25Instruct => {
-                ModelPipeline::Qwen2(Qwen2::new(config.as_qwen2().unwrap(), var).unwrap())
-            }
-            ModelType::Qwen3(_) | ModelType::Qwen3Special | ModelType::Qwen3InstructAbl => {
+            ModelType::Qwen3(_) | ModelType::Qwen3Special => {
                 ModelPipeline::Qwen3(Qwen3::new(config.as_qwen3().unwrap(), var).unwrap())
             }
-            ModelType::Qwen3InstructQuantized => {
+            ModelType::Qwen3Instruct => {
                 unreachable!("GGUF quantized models should not use create_pipeline")
             }
         }
@@ -166,7 +152,7 @@ impl ModelType {
         device: &Device,
     ) -> ModelPipeline {
         match self {
-            ModelType::Qwen3InstructQuantized | ModelType::Qwen3Special => {
+            ModelType::Qwen3Instruct | ModelType::Qwen3Special => {
                 let mut reader = std::fs::File::open(model_path).unwrap();
                 let content = gguf_file::Content::read(&mut reader).unwrap();
                 ModelPipeline::QuantizedQwen3(
@@ -179,21 +165,14 @@ impl ModelType {
 
     /// Preprocesses the logits for this model type.
     pub fn process_logits(&self, logits: Tensor) -> Tensor {
-        match self {
-            ModelType::Qwen25Instruct
-            | ModelType::Qwen3(_)
-            | ModelType::Qwen3InstructQuantized
-            | ModelType::Qwen3Special
-            | ModelType::Qwen3InstructAbl => {
-                // Process logits for Qwen3 model
-                logits
-                    .squeeze(0)
-                    .unwrap()
-                    .squeeze(0)
-                    .unwrap()
-                    .to_dtype(DType::F32)
-                    .unwrap()
-            }
+        match self.architecture() {
+            ModelArchitecture::Qwen3 => logits
+                .squeeze(0)
+                .unwrap()
+                .squeeze(0)
+                .unwrap()
+                .to_dtype(DType::F32)
+                .unwrap(),
         }
     }
 
@@ -202,7 +181,8 @@ impl ModelType {
         &self,
         chat_system_prompt: impl AsRef<str>,
         chat_history: &[ChatMessage],
-        extra_data: Option<&JsonMap>,
+        how_to_respond: &[&str],
+        extra_data: Option<&StringMap>,
     ) -> String {
         let mut prompt = String::new();
 
@@ -212,12 +192,34 @@ impl ModelType {
             chat_system_prompt.as_ref()
         ));
 
-        // Add extra data as key-value pairs for the model to understand
+        // If there are instructions for how to respond, then we add them to the system prompt as a bullet list in a <how_to_respond> block
+        if !how_to_respond.is_empty() {
+            prompt.push_str("\n**How you should respond:**\n<how_to_respond>\n");
+            for instruction in how_to_respond {
+                prompt.push_str(&format!("- {}\n", instruction));
+            }
+            prompt.push_str("</how_to_respond>\n");
+        }
+
+        // If there is extra data to provide to the model, then we add it to the system prompt in a special <knowledge> block
         if let Some(extra_data) = extra_data {
-            prompt.push_str(&format!(
-                "<notes>\n{}\n</notes>\n",
-                serde_json::to_string_pretty(extra_data).unwrap()
-            ));
+            // Start a <knowledge> block (totally a real thing right?)
+            prompt.push_str("\n**What you know:**\n<knowledge>\n");
+
+            // Add each key-value pair in the extra data with formatting as a bullet list
+            for (key, value) in extra_data {
+                // Replace newlines in the key with spaces so that it doesn't break the formatting of the bullet points
+                let key = key.replace("\n", " ");
+
+                // Replace backticks in the value with escaped backticks so that they don't break the code block formatting
+                let value = value.replace("`", "\\`");
+
+                // Push the key-value pair to the prompt as a bullet point with the key in bold and the value in an indented code block
+                prompt.push_str(&format!("- **{}**\n    `{}`\n", key, value));
+            }
+
+            // End the knowledge block
+            prompt.push_str("</knowledge>\n");
         }
 
         // Finally end the system section
@@ -263,6 +265,8 @@ impl ModelType {
                 }
             }
         }
+
+        println!("Created chat prompt:\n{}\n", prompt);
 
         prompt
     }

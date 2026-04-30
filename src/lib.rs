@@ -8,7 +8,6 @@ pub mod inference;
 pub mod json_builder;
 pub mod model;
 pub mod model_type;
-pub mod pipeline;
 pub mod prelude;
 pub mod token_string;
 
@@ -26,7 +25,7 @@ mod tests {
         const SEED: u64 = 13579;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
         // Create a JSON builder
         let mut json_builder = JsonBuilder::new(&mut model);
@@ -61,12 +60,12 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct, SEED, true).unwrap();
 
         // Create the schemas for the chat wrapper
         // String slices also work as schemas
-        let system_schema = "You are a quiz master who answers trivia questions in the provided tone. \
-            Answer concisely and accurately, and explain your answer further.";
+        let system_schema =
+            "You are a quiz master who answers trivia questions in the provided tone.";
         let input_schema = ChatSchema::new()
             .with_text(Some("Question".to_string()), "<input>")
             .with_text(Some("Tone".to_string()), "Please answer in a <tone> tone.");
@@ -106,6 +105,7 @@ mod tests {
             input_schema,
             output_schema,
             &examples,
+            vec!["Answer concisely and accurately, and explain your answer further.".to_string()],
         );
 
         // Get the output for each trivia question and print it
@@ -129,73 +129,28 @@ mod tests {
     }
 
     #[test]
-    fn pipeline() {
-        const SEED: u64 = 46364;
-        const POEM_THEMES: &[&str] = &[
-            "a magical adventure in a fantasy world",
-            "the beauty of nature in spring",
-            "breaking free from constraints and embracing freedom",
-        ];
-
-        // Create the model and pipeline
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
-        let mut pipeline = Pipeline::new(&mut model);
-
-        // Add a system propmt instructing the model to act as a poet
-        pipeline.system_prompt(
-            "You are a talented poet who writes beautiful and creative poems. \
-            Your poems should be 2 or 3 stanzas long and rhyme.",
-        );
-
-        // Add an instruct step to the pipeline which generates a poem based on the theme in {theme}
-        // And store the generated poem in the context under {poem}
-        pipeline.instruct(
-            "poem",
-            "Write a short poem based on the following theme: {theme}",
-            Some("Here is the poem:\n".to_string()),
-            vec![],
-        );
-
-        // Add a system prompt instructing the model to summarize poems in a concise manner while preserving the core meaning and style of the original poem
-        pipeline.system_prompt(
-            "When summarizing a poem, you should create a concise version of the poem that preserves the core \
-                meaning and style of the original poem. The summary should be much shorter than the original poem."
-        );
-
-        // Add a step to the pipeline which summarizes the poem in {poem} and stores the summary in the context under {summary}
-        pipeline.summarize("summary", "{poem}", "Concise and easy to understand");
-
-        // Execute the pipeline on the model for each poem theme and print the poem and summary outputs
-        for theme in POEM_THEMES {
-            let mut context = json_map! {
-                "theme" => *theme,
-            };
-            pipeline.execute(&mut context);
-            let poem = context["poem"].as_str().unwrap();
-            let summary = context["summary"].as_str().unwrap();
-            println!(
-                "Theme: {}\n\nGenerated poem:\n{}\n\n\n\nSummarized version:\n{}\n\n\n\n------\n\n\n",
-                theme, poem, summary
-            );
-        }
-    }
-
-    #[test]
     fn chat() {
         const SEED: u64 = 477474;
         const CONVERSATION_TURNS: usize = 14;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
 
         // Start a chat
         let mut chat = Chat::new(
             &mut model,
             "You are a helpful assistant and friendly person who has a great imagination, \
-            an open mind, and is fun to talk to. Talk to the user in a friendly and engaging manner.",
+            an open mind, and is fun to talk to.",
             &[],
             &InferParams::new_creative(),
-            None,
+            vec![
+                "Be friendly and engaging in your responses.".to_string(),
+                "Use your imagination to make the conversation more interesting.".to_string(),
+            ],
+            Some(string_map! {
+                "your name" => "Quill",
+                "the user's name" => "User",
+            }),
         );
 
         // Infer a conversation
@@ -254,7 +209,7 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct, SEED, true).unwrap();
 
         // Create a humanizer
         let mut humanizer = Humanizer::new(&mut model);
@@ -270,7 +225,7 @@ mod tests {
         const SEED: u64 = 547845;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3InstructQuantized, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct, SEED, true).unwrap();
 
         // Generate a story
         let mut story = "There was once".to_string();

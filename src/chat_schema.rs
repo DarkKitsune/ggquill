@@ -425,7 +425,7 @@ pub fn key_for_block(key: &str, end_sequences: &[&str], is_output: bool) -> Stri
         format!("<{} :: {}>", end_sequences.join("|"), key)
     } else {
         let end_sequence = end_sequences.first().cloned().unwrap_or_default();
-        
+
         // Special behavior for input keys with "{}" as the end sequence, to ignore the end sequence
         let end_sequence = if end_sequence == "{}" {
             ""
@@ -433,11 +433,7 @@ pub fn key_for_block(key: &str, end_sequences: &[&str], is_output: bool) -> Stri
             end_sequence
         };
 
-        format!(
-            "<{}>{}",
-            key,
-            end_sequence
-        )
+        format!("<{}>{}", key, end_sequence)
     }
 }
 
@@ -563,13 +559,13 @@ impl SchemaBlock for JsonBlock {
         };
 
         // Then start a code block and then the JSON string with an opening quote and brace
-        raw_string.push_str("```\nconst json = \"{\n");
+        raw_string.push_str("```\nconst json_string = String.raw`{\n");
 
         // Add an inferable key if output, or a context key if input, using the key name
         raw_string.push_str(&key_for_block(&self.key_name, &["{}"], is_output));
 
         // Then end the code block
-        raw_string.push_str("\n```");
+        raw_string.push_str("\n`;```");
 
         raw_string
     }

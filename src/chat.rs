@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::data::{JsonMap, JsonValue};
+use crate::data::StringMap;
 use crate::model::{MAX_TOKENS, Model};
 use crate::prelude::{InferIter, InferParams, ModelType, TokenString};
 
@@ -19,7 +19,8 @@ pub struct Chat {
     /// When there are too many messages we summarize the long_term_memory and half of the chat history together,
     /// store the summary in long_term_memory.
     long_term_memory: Option<String>,
-    extra_data: Option<JsonMap>,
+    how_to_respond: Vec<String>,
+    extra_data: Option<StringMap>,
 }
 
 impl Chat {
@@ -29,12 +30,18 @@ impl Chat {
         system_prompt: impl AsRef<str>,
         chat_history: &[ChatMessage],
         infer_params: &InferParams,
-        extra_data: Option<JsonMap>,
+        how_to_respond: impl Into<Vec<String>>,
+        extra_data: Option<StringMap>,
     ) -> Self {
+        let how_to_respond = how_to_respond.into();
         // Create the initial context for the chat using the model's prompt template and tokenize it
         let full_prompt = model.model_type().create_chat_prompt(
             &system_prompt,
             chat_history,
+            &how_to_respond
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
             extra_data.as_ref(),
         );
         let initial_context = model.tokenize(full_prompt);
@@ -48,11 +55,12 @@ impl Chat {
             infer_iter,
             chat_history: chat_history.to_vec(),
             long_term_memory: None,
+            how_to_respond,
             extra_data,
         }
     }
 
-    /// Resets the chat using a given system prompt and chat history.
+    /// Resets the chat using a given parameters.
     pub fn reset(
         &mut self,
         system_prompt: impl AsRef<str>,
@@ -63,17 +71,19 @@ impl Chat {
         // If long term memory is provided, set it in key "memory" of self.extra_data for the prompt template
         // Also create self.extra_data if it doesn't exist yet
         if let Some(long_term_memory) = &long_term_memory {
-            let extra_data = self.extra_data.get_or_insert_with(JsonMap::new);
-            extra_data.insert(
-                "long_term_memory".to_string(),
-                JsonValue::String(long_term_memory.clone()),
-            );
+            let extra_data = self.extra_data.get_or_insert_with(StringMap::new);
+            extra_data.insert("Your past memory".to_string(), long_term_memory.clone());
         }
 
         // Create the initial context for the chat using the model's prompt template and tokenize it
         let full_prompt = self.model_type.create_chat_prompt(
             &self.system_prompt,
             &chat_history,
+            &self
+                .how_to_respond
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
             self.extra_data.as_ref(),
         );
         let initial_context = self

@@ -72,6 +72,7 @@ impl Humanizer {
             input_schema,
             output_schema,
             &examples,
+            vec![],
         );
 
         Self { chat_wrapper }

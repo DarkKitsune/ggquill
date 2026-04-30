@@ -9,8 +9,7 @@ impl JsonBuilder {
     /// Creates a new JsonBuilder with the provided model. The model should be a capable instruction-following model.
     pub fn new(model: &mut Model) -> Self {
         let system_schema = "You are a helpful assistant that builds JSON objects based on the provided instructions. \
-            Follow the instructions carefully to construct the JSON object. \
-            Ensure that the JSON is well-formed and only includes relevant fields based on the instructions.";
+            Follow the instructions carefully to construct the JSON object.";
         // Input schema defines the structure of the user instructions, which is just a labelled text block containing the instructions
         let input_schema =
             ChatSchema::new().with_text(Some("Instructions".to_string()), "<instructions>");
@@ -59,6 +58,9 @@ r#"{
             input_schema,
             output_schema,
             &examples,
+            vec![
+                "Ensure that the JSON is well-formed and only includes relevant fields based on the instructions.".to_string(),
+            ],
         );
 
         Self { chat_wrapper }

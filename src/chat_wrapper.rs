@@ -50,6 +50,7 @@ impl SimpleChatWrapper {
         input_schema: impl Into<ChatSchema>,
         output_schema: impl Into<ChatSchema>,
         example_pairs: impl IntoIterator<Item = &'a (HashMap<String, String>, HashMap<String, String>)>,
+        how_to_respond: impl Into<Vec<String>>,
     ) -> Self {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
@@ -61,6 +62,7 @@ impl SimpleChatWrapper {
             system_schema.to_input_string(&HashMap::new()),
             &example_messages,
             infer_params,
+            how_to_respond,
             None,
         );
 

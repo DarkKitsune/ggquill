@@ -1,20 +1,7 @@
-use serde_json::{Map, Value};
+use serde_json::Value;
 
-pub type JsonMap = Map<String, Value>;
 pub type JsonValue = Value;
-
-#[macro_export]
-macro_rules! json_map {
-    ($($key:expr => $value:expr),* $(,)?) => {
-        {
-            let mut map = $crate::prelude::JsonMap::new();
-            $(
-                map.insert($key.to_string(), serde_json::Value::from($value));
-            )*
-            map
-        }
-    };
-}
+pub type StringMap = std::collections::HashMap<String, String>;
 
 #[macro_export]
 macro_rules! string_map {
