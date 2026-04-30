@@ -173,10 +173,13 @@ impl ChatSchema {
         let mut written_so_far = String::new();
         for (i, block) in self.blocks.iter().enumerate() {
             // Write each block to the InferIter with context substitution, and add a newline after each block (except the last one)
-            written_so_far.push_str(&block.write_input(iter, context));
-            if i < self.blocks.len() - 1 {
-                iter.push_str("\n\n");
-                written_so_far.push_str("\n\n");
+            // If a block returns None then it will be skipped entirely and no newline will be added for that block
+            if let Some(written) = block.write_input(iter, context) {
+                written_so_far.push_str(&written);
+                if i < self.blocks.len() - 1 {
+                    iter.push_str("\n\n");
+                    written_so_far.push_str("\n\n");
+                }
             }
         }
 
@@ -189,10 +192,12 @@ impl ChatSchema {
         let mut captures = HashMap::new();
         for (i, block) in self.blocks.iter().enumerate() {
             // Write each block to the InferIter, and add a newline after each block (except the last one)
-            written_so_far.push_str(&block.write_output(iter, &mut captures));
-            if i < self.blocks.len() - 1 {
-                iter.push_str("\n\n");
-                written_so_far.push_str("\n\n");
+            if let Some(written) = block.write_output(iter, &mut captures) {
+                written_so_far.push_str(&written);
+                if i < self.blocks.len() - 1 {
+                    iter.push_str("\n\n");
+                    written_so_far.push_str("\n\n");
+                }
             }
         }
 
@@ -206,7 +211,7 @@ impl ChatSchema {
     pub fn to_input_string(&self, context: &HashMap<String, String>) -> String {
         self.blocks
             .iter()
-            .map(|block| block.to_input_string(context))
+            .filter_map(|block| block.to_input_string(context))
             .collect::<Vec<_>>()
             .join("\n\n")
     }
@@ -214,9 +219,18 @@ impl ChatSchema {
     /// Converts the schema to a string as an output, replacing each inferable key with the corresponding value in `output_captures`.
     pub fn to_output_string(&self, output_captures: &HashMap<String, String>) -> String {
         let mut written_so_far = String::new();
+        // For each block that produces output, replace any inferable keys with the next value from the outputs iterator
         for (i, block) in self.blocks.iter().enumerate() {
-            // For each block, replace any inferable keys with the next value from the outputs iterator
+            // Convert the block to a raw string if possible
             let block_string = block.to_raw_string(true, output_captures);
+
+            // If the block does not produce any output then we skip it entirely and do not add a newline for it
+            if block_string.is_none() {
+                continue;
+            }
+
+            // Otherwise unwrap and replace any inferable keys in the block string with the corresponding values from the output captures, using the key contents as end sequences for inference
+            let block_string = block_string.unwrap();
             let keys = find_context_keys(&block_string);
             if keys.is_empty() {
                 written_so_far.push_str(&block_string);
@@ -325,25 +339,29 @@ pub trait SchemaBlock {
     /// This is used as an intermediate step for writing both inputs and outputs, and will define the structure of the block.
     /// Any <key> in the raw string will be treated as a context key for input schemas, and as an inferable key for output schemas.
     /// An end sequence of "{}" in inferable keys will indicate a JSON object and trigger special parsing logic.
-    fn to_raw_string(&self, is_output: bool, context: &HashMap<String, String>) -> String;
+    /// If this returns None then the block will be skipped entirely when writing the schema. This can be used to conditionally include blocks.
+    fn to_raw_string(&self, is_output: bool, context: &HashMap<String, String>) -> Option<String>;
 
     /// Writes the block to an InferIter as an input after substituting context map keys, using the given context map.
-    fn write_input(&self, iter: &mut InferIter, context: &HashMap<String, String>) -> String {
-        let raw = self.to_raw_string(false, context);
+    fn write_input(&self, iter: &mut InferIter, context: &HashMap<String, String>) -> Option<String> {
+        let raw = self.to_raw_string(false, context)?;
         let substituted = substitute_context_keys(&raw, context);
         iter.push_str(&substituted);
-        substituted
+        Some(substituted)
     }
 
-    // Converts the block to an input string after substituting context map keys, using the given context map.
-    fn to_input_string(&self, context: &HashMap<String, String>) -> String {
-        substitute_context_keys(&self.to_raw_string(false, context), context)
+    /// Converts the block to an input string after substituting context map keys, using the given context map.
+    /// If this returns None then the block should be skipped entirely when writing the schema.
+    fn to_input_string(&self, context: &HashMap<String, String>) -> Option<String> {
+        let raw = self.to_raw_string(false, context)?;
+        Some(substitute_context_keys(&raw, context))
     }
 
     /// Writes the block to an InferIter, using the given context map.
-    fn write_output(&self, iter: &mut InferIter, captures: &mut HashMap<String, String>) -> String {
+    /// Returns None if the block should be skipped entirely when writing the schema, or if the block does not produce any output.
+    fn write_output(&self, iter: &mut InferIter, captures: &mut HashMap<String, String>) -> Option<String> {
         let mut written_so_far = String::new();
-        let raw = self.to_raw_string(true, captures);
+        let raw = self.to_raw_string(true, captures)?;
 
         // Find all keys in the raw string and use them as end sequences for inference, then replace them with the inferred values
         let keys = find_context_keys(&raw);
@@ -352,7 +370,7 @@ pub trait SchemaBlock {
         if keys.is_empty() {
             written_so_far.push_str(&raw);
             iter.push_str(&raw);
-            return written_so_far;
+            return Some(written_so_far);
         }
 
         // Otherwise write the string up to the each key, then infer until the matching end sequence is found, and repeat until no keys remain.
@@ -415,7 +433,7 @@ pub trait SchemaBlock {
             last_index = end;
         }
 
-        written_so_far
+        Some(written_so_far)
     }
 }
 
@@ -462,13 +480,19 @@ impl SchemaBlock for TextBlock {
         self.label.as_deref()
     }
 
-    fn to_raw_string(&self, _is_output: bool, _context: &HashMap<String, String>) -> String {
+    fn to_raw_string(&self, _is_output: bool, _context: &HashMap<String, String>) -> Option<String> {
+        // Return None if the text is empty or only whitespace to indicate that this block should be skipped entirely
+        if self.text.trim().is_empty() {
+            return None;
+        }
+
+        // Else return the text, with the label as a heading if it exists
         let label_part = if let Some(label) = &self.label {
             format!("**{}:**\n", label)
         } else {
             String::new()
         };
-        format!("{}{}", label_part, self.text)
+        Some(format!("{}{}", label_part, self.text))
     }
 }
 
@@ -500,28 +524,51 @@ impl SchemaBlock for ListBlock {
         self.label.as_deref()
     }
 
-    fn to_raw_string(&self, _is_output: bool, context: &HashMap<String, String>) -> String {
+    fn to_raw_string(&self, _is_output: bool, context: &HashMap<String, String>) -> Option<String> {
+        // Start with the label if it exists
         let label_part = if let Some(label) = &self.label {
             format!("**{}:**\n", label)
         } else {
             String::new()
         };
+
+        // Substitute context keys in the items string
         let items_substituted = substitute_context_keys(&self.items, context);
+        let items_substituted = items_substituted
+            .trim();
+
+        // Split the items by '|' and format them as a numbered or bulleted list depending on the `numbered` field
         let items_part = items_substituted
             .split('|')
             .map(|item| item.trim())
             .filter(|item| !item.is_empty())
             .enumerate()
-            .map(|(i, item)| {
+            .filter_map(|(i, item)| {
+                // If the item is empty after trimming, skip it
+                let item = item.trim();
+                if item.is_empty() {
+                    return None;
+                }
+
+                // Add indentation after any newlines in the item to ensure proper formatting in the list
+                let item = item.replace('\n', "\n    ");
+                
+                // Format the item as a numbered or bulleted list item
                 if self.numbered {
-                    format!("{}. {}", i + 1, item)
+                    Some(format!("{}. {}", i + 1, item))
                 } else {
-                    format!("- {}", item)
+                    Some(format!("- {}", item))
                 }
             })
             .collect::<Vec<_>>()
             .join("\n");
-        format!("{}{}", label_part, items_part)
+        
+        // If items_part is empty, then return None to indicate that this block should be skipped entirely
+        if items_part.is_empty() {
+            return None;
+        }
+
+        Some(format!("{}{}", label_part, items_part))
     }
 }
 
@@ -550,7 +597,7 @@ impl SchemaBlock for JsonBlock {
         self.label.as_deref()
     }
 
-    fn to_raw_string(&self, is_output: bool, _context: &HashMap<String, String>) -> String {
+    fn to_raw_string(&self, is_output: bool, _context: &HashMap<String, String>) -> Option<String> {
         // Start with the label if it exists
         let mut raw_string = if let Some(label) = &self.label {
             format!("**{}:**\n", label)
@@ -567,6 +614,6 @@ impl SchemaBlock for JsonBlock {
         // Then end the code block
         raw_string.push_str("\n`;```");
 
-        raw_string
+        Some(raw_string)
     }
 }

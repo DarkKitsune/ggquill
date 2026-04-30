@@ -14,19 +14,20 @@ inherits = "release"
 [dependencies]
 
 # With Qwen flash attention
-# candle-core = {features = ["cuda"], git = "https://github.com/huggingface/candle.git"}
-# candle-nn = {features = ["cuda"], git = "https://github.com/huggingface/candle.git"}
-# candle-transformers = {features = ["cuda", "flash-attn"], git = "https://github.com/huggingface/candle.git"}
+candle-core = {features = ["cuda"], git = "https://github.com/huggingface/candle.git"}
+candle-nn = {features = ["cuda"], git = "https://github.com/huggingface/candle.git"}
+candle-transformers = {features = ["cuda", "flash-attn"], git = "https://github.com/huggingface/candle.git"}
 
 # Without Qwen flash attention
-candle-core = {features = ["cuda"], version = "0.10.2"}
-candle-nn = {features = ["cuda"], version = "0.10.2"}
-candle-transformers = {features = ["cuda"], version = "0.10.2"}
+# candle-core = {features = ["cuda"], version = "0.10.2"}
+# candle-nn = {features = ["cuda"], version = "0.10.2"}
+# candle-transformers = {features = ["cuda", "flash-attn"], version = "0.10.2"}
 
 ggmath = { path = "../ggmath" }
 anyhow = "1.0.98"
 hf-hub = "0.5.0"
 tokenizers = "0.23.1"
+serde = "1.0.228"
 serde_json = "1.0.149"
 itertools = "0.14.0"
 aho-corasick = "1.1.4"

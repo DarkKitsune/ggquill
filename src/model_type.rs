@@ -16,11 +16,14 @@ use crate::model::{DynConfig, ModelPipeline};
 /// This is used to determine which model files to load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelSize {
-    /// 0 - 3B parameters
+	/// A super lightweight model.
+    /// Usually around 0 - 7B parameters.
     Small,
-    /// 3B - 6B parameters
+    /// A medium-weight model balanced between speed and power.
+    /// Usually around 8B - 15B parameters.
     Medium,
-    /// 6B - 20B parameters
+    /// A heavyweight model sacrificing efficiency for power.
+    /// Usually around 16B+ parameters.
     Large,
 }
 
@@ -33,16 +36,14 @@ pub enum ModelArchitecture {
 /// Represents the type of model to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelType {
-    Qwen3(ModelSize),
-    Qwen3Instruct,
-    Qwen3Special,
+    Qwen3Instruct(ModelSize),
 }
 
 impl ModelType {
     /// Get the base architecture of this model type.
     pub fn architecture(&self) -> ModelArchitecture {
         match self {
-            ModelType::Qwen3(_) | ModelType::Qwen3Instruct | ModelType::Qwen3Special => {
+            ModelType::Qwen3Instruct(_) => {
                 ModelArchitecture::Qwen3
             }
         }
@@ -62,55 +63,33 @@ impl ModelType {
 
     /// Returns true if this is a GGUF quantized model type, which requires special handling
     pub fn is_gguf_quantized(&self) -> bool {
-        matches!(self, ModelType::Qwen3Instruct | ModelType::Qwen3Special)
+        matches!(self, ModelType::Qwen3Instruct(_))
     }
 
     pub fn model_repo(&self) -> ModelRepo {
         match self {
-            ModelType::Qwen3(model_size) => match model_size {
-                ModelSize::Small => ModelRepo::hub("Qwen/Qwen3-1.7B"),
-                ModelSize::Medium => ModelRepo::hub("Qwen/Qwen3-4B"),
-                ModelSize::Large => ModelRepo::hub("Qwen/Qwen3-8B"),
-            },
-            ModelType::Qwen3Instruct => {
-                ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF")
-            }
-            ModelType::Qwen3Special => {
-                ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF")
+            // Qwen 3 instruct (preferably abliterated)
+            ModelType::Qwen3Instruct(model_size) => match model_size {
+                ModelSize::Small => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF"),
+                ModelSize::Medium => ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF"),
+                ModelSize::Large => unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size),
             }
         }
     }
 
     pub fn tokenizer_repo(&self) -> ModelRepo {
         match self {
-            ModelType::Qwen3Instruct => ModelRepo::hub("Qwen/Qwen3-14B"),
-            ModelType::Qwen3Special => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
-            _ => self.model_repo(),
+            ModelType::Qwen3Instruct(_) => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special"),
         }
     }
 
     pub fn model_names(&self) -> &[&'static str] {
         match self {
-            ModelType::Qwen3(model_size) => match model_size {
-                ModelSize::Small => &[
-                    "model-00001-of-00002.safetensors",
-                    "model-00002-of-00002.safetensors",
-                ],
-                ModelSize::Medium => &[
-                    "model-00001-of-00003.safetensors",
-                    "model-00002-of-00003.safetensors",
-                    "model-00003-of-00003.safetensors",
-                ],
-                ModelSize::Large => &[
-                    "model-00001-of-00005.safetensors",
-                    "model-00002-of-00005.safetensors",
-                    "model-00003-of-00005.safetensors",
-                    "model-00004-of-00005.safetensors",
-                    "model-00005-of-00005.safetensors",
-                ],
+            ModelType::Qwen3Instruct(model_size) => match model_size {
+                ModelSize::Small => &["qwen3-4b-instruct-special-q4_k_m-imat.gguf"],
+                ModelSize::Medium => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q3_K_S.gguf"],
+                ModelSize::Large => unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size),
             },
-            ModelType::Qwen3Instruct => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q3_K_L.gguf"],
-            ModelType::Qwen3Special => &["qwen3-4b-instruct-special-q4_k_m-imat.gguf"],
         }
     }
 
@@ -122,25 +101,19 @@ impl ModelType {
     pub fn create_config(&self, repo: &ModelRepo, api: &Api) -> DynConfig {
         let config_filename = repo.file_paths(&["config.json"], api).pop().unwrap();
         let config = std::fs::read_to_string(config_filename).unwrap();
-        match self {
-            ModelType::Qwen3(_) | ModelType::Qwen3Special => {
+        match self.architecture() {
+            ModelArchitecture::Qwen3 => {
                 let config = serde_json::from_str(&config).unwrap();
                 DynConfig::Qwen3(config)
-            }
-            ModelType::Qwen3Instruct => {
-                unreachable!("GGUF quantized models should not use create_config")
             }
         }
     }
 
     /// Create a pipeline for this type of model.
     pub fn create_pipeline(&self, config: &DynConfig, var: VarBuilder) -> ModelPipeline {
-        match self {
-            ModelType::Qwen3(_) | ModelType::Qwen3Special => {
+        match self.architecture() {
+            ModelArchitecture::Qwen3 => {
                 ModelPipeline::Qwen3(Qwen3::new(config.as_qwen3().unwrap(), var).unwrap())
-            }
-            ModelType::Qwen3Instruct => {
-                unreachable!("GGUF quantized models should not use create_pipeline")
             }
         }
     }
@@ -151,15 +124,14 @@ impl ModelType {
         model_path: &PathBuf,
         device: &Device,
     ) -> ModelPipeline {
-        match self {
-            ModelType::Qwen3Instruct | ModelType::Qwen3Special => {
+        match self.architecture() {
+            ModelArchitecture::Qwen3 => {
                 let mut reader = std::fs::File::open(model_path).unwrap();
                 let content = gguf_file::Content::read(&mut reader).unwrap();
                 ModelPipeline::QuantizedQwen3(
                     QuantizedQwen3::from_gguf(content, &mut reader, device).unwrap(),
                 )
             }
-            _ => unreachable!("GGUF quantized pipeline not supported for this model type"),
         }
     }
 
@@ -221,7 +193,7 @@ impl ModelType {
                 let value = value.replace("\n", "\n    ");
 
                 // Push the key-value pair to the prompt as a bullet point with the key in bold and the value in an indented code block
-                prompt.push_str(&format!("- **{}**\n    `{}`\n", key, value));
+                prompt.push_str(&format!("- **{}:** ```\n    {}```\n", key, value));
             }
 
             // End the knowledge block

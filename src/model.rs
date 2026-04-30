@@ -42,8 +42,6 @@ impl Model {
         };
         println!("Using device: {:?}, is_cuda: {}", device, is_cuda);
 
-        let dtype = if is_cuda { DType::BF16 } else { DType::F32 };
-
         // Get the model repos
         let api = Api::new()?;
         let model_repo = model_type.model_repo();
@@ -63,6 +61,8 @@ impl Model {
         let pipeline = if model_type.is_gguf_quantized() {
             model_type.create_gguf_quantized_pipeline(&model_filenames[0], &device)
         } else {
+            let dtype = if is_cuda { DType::BF16 } else { DType::F32 };
+
             // Create model config
             let config = model_type.create_config(&model_repo, &api);
 
@@ -218,7 +218,6 @@ impl Model {
     }
 
     /// Get the average tokens per second for this model. Returns none if time has not been measured.
-    /// Measuring only occurs if `InferParams::measure_time` is set to true for a generation.
     pub fn average_tokens_per_second(&self) -> Option<f64> {
         self.avg_tokens_per_second.borrow().map(|(avg, _)| avg)
     }

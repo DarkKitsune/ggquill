@@ -5,7 +5,7 @@ pub use crate::chat_wrapper::{ChatWrapper, SimpleChatWrapper};
 pub use crate::data::{JsonValue, StringMap};
 pub use crate::humanizer::Humanizer;
 pub use crate::inference::{InferIter, InferParams};
-pub use crate::json_builder::JsonBuilder;
+pub use crate::json_builder::{*};
 pub use crate::model::Model;
 pub use crate::model_type::{ModelSize, ModelType};
 pub use crate::string_map;

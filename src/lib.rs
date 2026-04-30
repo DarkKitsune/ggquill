@@ -25,21 +25,45 @@ mod tests {
         const SEED: u64 = 13579;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Small), SEED, true).unwrap();
 
         // Create a JSON builder
         let mut json_builder = JsonBuilder::new(&mut model);
 
+        // Define a template for the expected JSON structure
+        
+        let template = object([
+            property("scene", object([
+                property("player", object([
+                    property("health", number(Some(0.0), Some(100.0))),
+                    property("position", object([
+                        property("x", number(None, None)),
+                        property("y", number(None, None)),
+                        property("z", number(None, None)),
+                    ])),
+                ])),
+                property("enemies", array(object([
+                    property("name", string()),
+                    property("health", number(Some(0.0), Some(100.0))),
+                    property("position", object([
+                        property("x", number(None, None)),
+                        property("y", number(None, None)),
+                        property("z", number(None, None)),
+                    ])),
+                ]))),
+            ])),
+        ]);
+
+        println!("Template for expected JSON structure:\n{}\n", template);
+
         // Define some instructions for building JSON and print the generated JSON outputs
         let instructions_list = [
-            "Build a JSON object for a movie with the title 'Inception', the director 'Christopher Nolan', \
-            and a list of main actors including interesting tidbits about them.",
-            "Construct a JSON object for a recipe with the name 'Chocolate Chip Cookies', a list of ingredients with their quantities, \
-            and step-by-step instructions for how to make the cookies.",
+            "Build a JSON object representing a scene tree for an interesting horror game with 'enemies' populated by lovecraftian monsters, \
+            The player should be in good health and be centered at the origin.",
         ];
 
         for instructions in instructions_list {
-            let output_json = json_builder.build_json(instructions, Some(5)).unwrap();
+            let output_json = json_builder.build_json(instructions, &template, Some(5)).unwrap();
             println!(
                 "\nInstructions: {}\nGenerated JSON:\n{}\n",
                 instructions,
@@ -60,7 +84,7 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Create the schemas for the chat wrapper
         // String slices also work as schemas
@@ -134,7 +158,7 @@ mod tests {
         const CONVERSATION_TURNS: usize = 14;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Special, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Start a chat
         let mut chat = Chat::new(
@@ -209,7 +233,7 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Create a humanizer
         let mut humanizer = Humanizer::new(&mut model);
@@ -225,7 +249,7 @@ mod tests {
         const SEED: u64 = 547845;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct, SEED, true).unwrap();
+        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Generate a story
         let mut story = "There was once".to_string();
