@@ -266,8 +266,6 @@ impl ModelType {
             }
         }
 
-        println!("Created chat prompt:\n{}\n", prompt);
-
         prompt
     }
 
