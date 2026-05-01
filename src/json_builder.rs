@@ -188,22 +188,24 @@ impl TemplateNode {
                 if let Some(obj) = value.as_object() {
                     // Check if all required properties are present, and validate all properties that are present
                     for prop in properties {
+                        // First substitute context keys in the property name to get the actual property name to look for in the JSON object
+                        let prop_name = substitute_context_keys(&prop.name, input_context);
                         // If property is one of the reserved names, we should reject it to avoid confusion with the JSON schema representation
-                        match prop.name.as_str() {
+                        match prop_name.as_str() {
                             "type" | "properties" | "items_schema" | "required" => {
                                 anyhow::bail!(
                                     "Property name '{}' is reserved and cannot be used in the template",
-                                    prop.name
+                                    prop_name
                                 );
                             }
                             _ => {}
                         }
-                        if let Some(prop_value) = obj.get(&prop.name) {
+                        if let Some(prop_value) = obj.get(prop_name.as_str()) {
                             prop.node.validate(prop_value, input_context).map_err(|e| {
-                                anyhow::anyhow!("Property '{}' is invalid: {}", prop.name, e)
+                                anyhow::anyhow!("Property '{}' is invalid: {}", prop_name, e)
                             })?;
                         } else if prop.required {
-                            anyhow::bail!("Missing required property: '{}'", prop.name);
+                            anyhow::bail!("Missing required property: '{}'", prop_name);
                         }
                     }
                 } else {
