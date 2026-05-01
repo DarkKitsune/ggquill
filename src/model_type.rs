@@ -16,7 +16,7 @@ use crate::model::{DynConfig, ModelPipeline};
 /// This is used to determine which model files to load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelSize {
-	/// A super lightweight model.
+    /// A super lightweight model.
     /// Usually around 0 - 7B parameters.
     Small,
     /// A medium-weight model balanced between speed and power.
@@ -43,9 +43,7 @@ impl ModelType {
     /// Get the base architecture of this model type.
     pub fn architecture(&self) -> ModelArchitecture {
         match self {
-            ModelType::Qwen3Instruct(_) => {
-                ModelArchitecture::Qwen3
-            }
+            ModelType::Qwen3Instruct(_) => ModelArchitecture::Qwen3,
         }
     }
 
@@ -70,10 +68,16 @@ impl ModelType {
         match self {
             // Qwen 3 instruct (preferably abliterated)
             ModelType::Qwen3Instruct(model_size) => match model_size {
-                ModelSize::Small => ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF"),
-                ModelSize::Medium => ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF"),
-                ModelSize::Large => unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size),
-            }
+                ModelSize::Small => {
+                    ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF")
+                }
+                ModelSize::Medium => {
+                    ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF")
+                }
+                ModelSize::Large => {
+                    unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size)
+                }
+            },
         }
     }
 
@@ -88,7 +92,9 @@ impl ModelType {
             ModelType::Qwen3Instruct(model_size) => match model_size {
                 ModelSize::Small => &["qwen3-4b-instruct-special-q4_k_m-imat.gguf"],
                 ModelSize::Medium => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q3_K_S.gguf"],
-                ModelSize::Large => unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size),
+                ModelSize::Large => {
+                    unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size)
+                }
             },
         }
     }
@@ -188,7 +194,7 @@ impl ModelType {
 
                 // The value will be in a code block, so replace backticks in the value with escaped backticks
                 let value = value.replace("`", "\\`");
-                
+
                 // For each newline in value we need to add an extra indentation level so that the formatting of the code block isn't broken by newlines
                 let value = value.replace("\n", "\n    ");
 

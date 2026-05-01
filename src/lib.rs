@@ -31,28 +31,42 @@ mod tests {
         let mut json_builder = JsonBuilder::new(&mut model);
 
         // Define a template for the expected JSON structure
-        
-        let template = object([
-            property("scene", object([
-                property("player", object([
-                    property("health", number(Some(0.0), Some(100.0))),
-                    property("position", object([
-                        property("x", number(None, None)),
-                        property("y", number(None, None)),
-                        property("z", number(None, None)),
+        let template = object([property(
+            "scene",
+            object([
+                property("location_name", string()),
+                property("location_description", string()),
+                property(
+                    "player",
+                    object([
+                        property("health", number(Some(0.0), Some(100.0))),
+                        property(
+                            "position",
+                            object([
+                                property("x", number(None, None)),
+                                property("y", number(None, None)),
+                                property("z", number(None, None)),
+                            ]),
+                        ),
+                    ]),
+                ),
+                property(
+                    "enemies",
+                    array(object([
+                        property("name", string()),
+                        property("health", number(Some(0.0), Some(100.0))),
+                        property(
+                            "position",
+                            object([
+                                property("x", number(None, None)),
+                                property("y", number(None, None)),
+                                property("z", number(None, None)),
+                            ]),
+                        ),
                     ])),
-                ])),
-                property("enemies", array(object([
-                    property("name", string()),
-                    property("health", number(Some(0.0), Some(100.0))),
-                    property("position", object([
-                        property("x", number(None, None)),
-                        property("y", number(None, None)),
-                        property("z", number(None, None)),
-                    ])),
-                ]))),
-            ])),
-        ]);
+                ),
+            ]),
+        )]);
 
         println!("Template for expected JSON structure:\n{}\n", template);
 
@@ -63,7 +77,9 @@ mod tests {
         ];
 
         for instructions in instructions_list {
-            let output_json = json_builder.build_json(instructions, &template, Some(5)).unwrap();
+            let output_json = json_builder
+                .build_json(instructions, &template, Some(5))
+                .unwrap();
             println!(
                 "\nInstructions: {}\nGenerated JSON:\n{}\n",
                 instructions,
@@ -84,7 +100,8 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let mut model =
+            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Create the schemas for the chat wrapper
         // String slices also work as schemas
@@ -158,7 +175,8 @@ mod tests {
         const CONVERSATION_TURNS: usize = 14;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let mut model =
+            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Start a chat
         let mut chat = Chat::new(
@@ -233,7 +251,8 @@ mod tests {
         ];
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let mut model =
+            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Create a humanizer
         let mut humanizer = Humanizer::new(&mut model);
@@ -249,7 +268,8 @@ mod tests {
         const SEED: u64 = 547845;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let mut model =
+            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Generate a story
         let mut story = "There was once".to_string();

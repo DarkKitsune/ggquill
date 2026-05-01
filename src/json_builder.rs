@@ -10,7 +10,7 @@ pub enum TemplateNode {
     String,
     Number(Option<f64>, Option<f64>), // Optional min and max bounds for numbers
     Boolean,
-    Array(Box<TemplateNode>), // Array of a certain type
+    Array(Box<TemplateNode>),      // Array of a certain type
     Object(Vec<TemplateProperty>), // Object with properties
 }
 
@@ -86,11 +86,19 @@ impl TemplateNode {
 
             TemplateNode::Number(min, max) => {
                 if let Some(num) = value.as_f64() {
-                    if let Some(min) = min && num < *min {
+                    if let Some(min) = min
+                        && num < *min
+                    {
                         anyhow::bail!("Number {} is less than minimum allowed value {}", num, min);
                     }
-                    if let Some(max) = max && num > *max {
-                        anyhow::bail!("Number {} is greater than maximum allowed value {}", num, max);
+                    if let Some(max) = max
+                        && num > *max
+                    {
+                        anyhow::bail!(
+                            "Number {} is greater than maximum allowed value {}",
+                            num,
+                            max
+                        );
                     }
                 } else {
                     anyhow::bail!("Expected a number value, but got: {}", value);
@@ -122,7 +130,10 @@ impl TemplateNode {
                         // If property is one of the reserved names, we should reject it to avoid confusion with the JSON schema representation
                         match prop.name.as_str() {
                             "type" | "properties" | "items_schema" | "required" => {
-                                anyhow::bail!("Property name '{}' is reserved and cannot be used in the template", prop.name);
+                                anyhow::bail!(
+                                    "Property name '{}' is reserved and cannot be used in the template",
+                                    prop.name
+                                );
                             }
                             _ => {}
                         }
@@ -224,33 +235,31 @@ impl JsonBuilder {
         let system_schema = "You are a helpful assistant that builds JSON objects based on the provided JSON schema and instructions. \
             Follow the instructions carefully to construct the JSON object.";
         // Input schema defines the structure of the user instructions, which is just a labelled text block containing the instructions
-        let input_schema =
-            ChatSchema::new()
-                .with_text(Some("JSON Schema".to_string()), "<template>")
-                .with_text(Some("Instructions".to_string()), "<instructions>");
+        let input_schema = ChatSchema::new()
+            .with_text(Some("JSON Schema".to_string()), "<template>")
+            .with_text(Some("Instructions".to_string()), "<instructions>");
         // Output schema defines the structure of the assistant response, which is a labelled JSON block in this case
         let output_schema = ChatSchema::new().with_json(Some("JSON".to_string()), "json");
 
         // Example pairs of input instructions and expected output JSON for the chat wrapper
-        let examples = [
-            (
-                string_map! {
-                    "template" => object(
-                        [
-                            property("title", string()),
-                            optional_property("year", number(Some(1900.0), None)),
-                            property("main_actors", array(object(
-                                [
-                                    property("name", string()),
-                                    optional_property("tidbits", array(string())),
-                                ]
-                            ))),
-                        ]
-                    ),
-                    "instructions" => "Build a short and simple JSON for the movie 'Inception' with just 3 actors.",
-                },
-                string_map! {
-                    "json" =>
+        let examples = [(
+            string_map! {
+                "template" => object(
+                    [
+                        property("title", string()),
+                        optional_property("year", number(Some(1900.0), None)),
+                        property("main_actors", array(object(
+                            [
+                                property("name", string()),
+                                optional_property("tidbits", array(string())),
+                            ]
+                        ))),
+                    ]
+                ),
+                "instructions" => "Build a short and simple JSON for the movie 'Inception' with just 3 actors.",
+            },
+            string_map! {
+                "json" =>
 r#"{
     "title": "Inception",
     "year": 2010,
@@ -269,9 +278,8 @@ r#"{
     ]
 }"
 "#,
-                },
-            ),
-        ];
+            },
+        )];
 
         // Create the chat wrapper with the specified schemas and examples
         let chat_wrapper = SimpleChatWrapper::new(
@@ -315,8 +323,7 @@ r#"{
 
             // Try parsing the JSON string to ensure it's well-formed, and return it as a string
             println!("Attempting to build JSON (attempt {})", attempts + 1);
-            if let Ok(parsed_json) = serde_json::from_str::<JsonValue>(&captures["json"])
-            {
+            if let Ok(parsed_json) = serde_json::from_str::<JsonValue>(&captures["json"]) {
                 // Run template validation on the JSON object
                 match template.validate(&parsed_json) {
                     Ok(_) => {

@@ -343,7 +343,11 @@ pub trait SchemaBlock {
     fn to_raw_string(&self, is_output: bool, context: &HashMap<String, String>) -> Option<String>;
 
     /// Writes the block to an InferIter as an input after substituting context map keys, using the given context map.
-    fn write_input(&self, iter: &mut InferIter, context: &HashMap<String, String>) -> Option<String> {
+    fn write_input(
+        &self,
+        iter: &mut InferIter,
+        context: &HashMap<String, String>,
+    ) -> Option<String> {
         let raw = self.to_raw_string(false, context)?;
         let substituted = substitute_context_keys(&raw, context);
         iter.push_str(&substituted);
@@ -359,7 +363,11 @@ pub trait SchemaBlock {
 
     /// Writes the block to an InferIter, using the given context map.
     /// Returns None if the block should be skipped entirely when writing the schema, or if the block does not produce any output.
-    fn write_output(&self, iter: &mut InferIter, captures: &mut HashMap<String, String>) -> Option<String> {
+    fn write_output(
+        &self,
+        iter: &mut InferIter,
+        captures: &mut HashMap<String, String>,
+    ) -> Option<String> {
         let mut written_so_far = String::new();
         let raw = self.to_raw_string(true, captures)?;
 
@@ -480,7 +488,11 @@ impl SchemaBlock for TextBlock {
         self.label.as_deref()
     }
 
-    fn to_raw_string(&self, _is_output: bool, _context: &HashMap<String, String>) -> Option<String> {
+    fn to_raw_string(
+        &self,
+        _is_output: bool,
+        _context: &HashMap<String, String>,
+    ) -> Option<String> {
         // Return None if the text is empty or only whitespace to indicate that this block should be skipped entirely
         if self.text.trim().is_empty() {
             return None;
@@ -534,8 +546,7 @@ impl SchemaBlock for ListBlock {
 
         // Substitute context keys in the items string
         let items_substituted = substitute_context_keys(&self.items, context);
-        let items_substituted = items_substituted
-            .trim();
+        let items_substituted = items_substituted.trim();
 
         // Split the items by '|' and format them as a numbered or bulleted list depending on the `numbered` field
         let items_part = items_substituted
@@ -552,7 +563,7 @@ impl SchemaBlock for ListBlock {
 
                 // Add indentation after any newlines in the item to ensure proper formatting in the list
                 let item = item.replace('\n', "\n    ");
-                
+
                 // Format the item as a numbered or bulleted list item
                 if self.numbered {
                     Some(format!("{}. {}", i + 1, item))
@@ -562,7 +573,7 @@ impl SchemaBlock for ListBlock {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        
+
         // If items_part is empty, then return None to indicate that this block should be skipped entirely
         if items_part.is_empty() {
             return None;
