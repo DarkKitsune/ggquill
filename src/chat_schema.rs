@@ -9,7 +9,7 @@ pub const SCHEMA_PASSTHROUGH_INPUT: &str = "input";
 
 /// Helper function for parsing context keys in the format "<key>" and substituting
 /// them with their JSON values from the context.
-fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> String {
+pub fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> String {
     // Build the patterns and replacements for the Aho-Corasick algorithm
     let (patterns, replacements): (Vec<String>, Vec<String>) = context
         .iter()
@@ -170,11 +170,17 @@ impl ChatSchema {
     /// Writes the schema to an InferIter as an input, using the given context map to substitute any context keys in the blocks.
     /// Also returns the final input string as written to the InferIter.
     pub fn write_input(&self, iter: &mut InferIter, context: &HashMap<String, String>) -> String {
+        // First apply context keys to the values in the context itself
+        let context = context
+            .iter()
+            .map(|(k, v)| (k.clone(), substitute_context_keys(v, context)))
+            .collect::<HashMap<_, _>>();
+
         let mut written_so_far = String::new();
         for (i, block) in self.blocks.iter().enumerate() {
             // Write each block to the InferIter with context substitution, and add a newline after each block (except the last one)
             // If a block returns None then it will be skipped entirely and no newline will be added for that block
-            if let Some(written) = block.write_input(iter, context) {
+            if let Some(written) = block.write_input(iter, &context) {
                 written_so_far.push_str(&written);
                 if i < self.blocks.len() - 1 {
                     iter.push_str("\n\n");
@@ -209,9 +215,16 @@ impl ChatSchema {
 
     /// Converts the schema to a string as an input, using the given context map to substitute any context keys in the blocks.
     pub fn to_input_string(&self, context: &HashMap<String, String>) -> String {
+        // First apply context keys to the values in the context itself
+        let context = context
+            .iter()
+            .map(|(k, v)| (k.clone(), substitute_context_keys(v, context)))
+            .collect::<HashMap<_, _>>();
+
+        // Then convert each block to a string with context substitution and join them with newlines, skipping any blocks that return None
         self.blocks
             .iter()
-            .filter_map(|block| block.to_input_string(context))
+            .filter_map(|block| block.to_input_string(&context))
             .collect::<Vec<_>>()
             .join("\n\n")
     }

@@ -2,12 +2,13 @@ use std::{collections::HashMap, fmt::Display};
 
 use anyhow::Result;
 
-use crate::prelude::*;
+use crate::{chat_schema::substitute_context_keys, prelude::*};
 
 /// Represents a node in a JSON template, which can be a primitive type (string, number, boolean), an array, or an object with properties.
 #[derive(Debug, Clone)]
 pub enum TemplateNode {
     String,
+    OneOf(Vec<JsonValue>), // A value that can be one of several specified JSON values
     Number(Option<f64>, Option<f64>), // Optional min and max bounds for numbers
     Boolean,
     Array(Box<TemplateNode>),      // Array of a certain type
@@ -17,6 +18,25 @@ pub enum TemplateNode {
 impl TemplateNode {
     pub fn string() -> Self {
         TemplateNode::String
+    }
+
+    pub fn one_of(options: impl IntoIterator<Item = impl Into<JsonValue>>) -> Self {
+        // If any options is a string containing "|" character, we should split that option into multiple options
+        let mut expanded_options = Vec::new();
+        for opt in options.into_iter() {
+            let opt = opt.into();
+
+            // We only want to split string options, if the option is not a string then we just add it as is
+            if let Some(opt_str) = opt.as_str() && opt_str.contains('|') {
+                // Split the option string by "|" and trim whitespace from each resulting option, then use extend to add them
+                expanded_options.extend(opt_str.split('|').map(|s| s.trim().into()));
+            } else {
+                // Was not a string so just push it
+                expanded_options.push(opt);
+            }
+        }
+        
+        TemplateNode::OneOf(expanded_options)
     }
 
     pub fn number(min: Option<f64>, max: Option<f64>) -> Self {
@@ -39,6 +59,13 @@ impl TemplateNode {
     pub fn to_json_schema(&self) -> JsonValue {
         match self {
             TemplateNode::String => json!({"type": "string"}),
+
+            TemplateNode::OneOf(options) => {
+                json!({
+                    "possible_values": options,
+                })
+            }
+
             TemplateNode::Number(min, max) => {
                 let mut schema = json!({"type": "number"});
                 if let Some(min) = min {
@@ -49,13 +76,16 @@ impl TemplateNode {
                 }
                 schema
             }
+
             TemplateNode::Boolean => json!({"type": "boolean"}),
+
             TemplateNode::Array(item_node) => {
                 json!({
                     "type": "array",
                     "items_schema": item_node.to_json_schema(),
                 })
             }
+
             TemplateNode::Object(properties) => {
                 let properties_schema: HashMap<_, _> = properties
                     .iter()
@@ -76,11 +106,42 @@ impl TemplateNode {
     }
 
     /// Validates a given JSON value against this template node, returning an error if the value does not conform to the template.
-    pub fn validate(&self, value: &JsonValue) -> Result<()> {
+    pub fn validate(&self, value: &JsonValue, input_context: &HashMap<String, String>) -> Result<()> {
         match self {
             TemplateNode::String => {
                 if !value.is_string() {
                     anyhow::bail!("Expected a string value, but got: {}", value);
+                }
+            }
+
+            TemplateNode::OneOf(options) => {
+                // Any string options should have context keys substituted
+                // Also split them over '|' afterwards
+                let options = options
+                    .iter()
+                    .flat_map(|opt| {
+                        if let Some(opt_str) = opt.as_str() {
+                            // First substitute context keys in the option string
+                            let substituted = substitute_context_keys(opt_str, input_context);
+
+                            // If the substituted string contains '|' then we should split it into multiple options
+                            if substituted.contains('|') {
+                                substituted.split('|').map(|s| s.trim().into()).collect::<Vec<_>>()
+                            } else {
+                                vec![substituted.into()]
+                            }
+                        } else {
+                            vec![opt.clone()]
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                if !options.contains(value) {
+                    anyhow::bail!(
+                        "Expected a value that is one of {:?}, but got: {}",
+                        options,
+                        value
+                    );
                 }
             }
 
@@ -114,7 +175,7 @@ impl TemplateNode {
             TemplateNode::Array(item_node) => {
                 if let Some(arr) = value.as_array() {
                     for (index, item) in arr.iter().enumerate() {
-                        item_node.validate(item).map_err(|e| {
+                        item_node.validate(item, input_context).map_err(|e| {
                             anyhow::anyhow!("Array item at index {} is invalid: {}", index, e)
                         })?;
                     }
@@ -138,7 +199,7 @@ impl TemplateNode {
                             _ => {}
                         }
                         if let Some(prop_value) = obj.get(&prop.name) {
-                            prop.node.validate(prop_value).map_err(|e| {
+                            prop.node.validate(prop_value, input_context).map_err(|e| {
                                 anyhow::anyhow!("Property '{}' is invalid: {}", prop.name, e)
                             })?;
                         } else if prop.required {
@@ -204,6 +265,11 @@ pub fn string() -> TemplateNode {
     TemplateNode::string()
 }
 
+/// Helper function for creating a TemplateNode one_of with a more concise syntax.
+pub fn one_of(options: impl IntoIterator<Item = impl Into<JsonValue>>) -> TemplateNode {
+    TemplateNode::one_of(options)
+}
+
 /// Helper function for creating a TemplateNode number with a more concise syntax.
 pub fn number(min: Option<f64>, max: Option<f64>) -> TemplateNode {
     TemplateNode::number(min, max)
@@ -233,11 +299,14 @@ impl JsonBuilder {
     /// Creates a new JsonBuilder with the provided model. The model should be a capable instruction-following model.
     pub fn new(model: &mut Model) -> Self {
         let system_schema = "You are a helpful assistant that builds JSON objects based on the provided JSON schema and instructions. \
-            Follow the instructions carefully to construct the JSON object.";
+            Follow the instructions carefully to construct the JSON object. \
+            If the JSON schema contains an object such as {\"possible_values\": [...]}, then select the most fitting value from the array.";
+        
         // Input schema defines the structure of the user instructions, which is just a labelled text block containing the instructions
         let input_schema = ChatSchema::new()
             .with_text(Some("JSON Schema".to_string()), "<template>")
             .with_text(Some("Instructions".to_string()), "<instructions>");
+
         // Output schema defines the structure of the assistant response, which is a labelled JSON block in this case
         let output_schema = ChatSchema::new().with_json(Some("JSON".to_string()), "json");
 
@@ -304,12 +373,20 @@ r#"{
         &mut self,
         instructions: &str,
         template: &TemplateNode,
+        opt_input_context: Option<&HashMap<String, String>>,
         max_attempts: Option<usize>,
     ) -> Option<JsonValue> {
         // Create the input context for the chat wrapper using the provided instructions
         let input_context = string_map! {
             "template" => template,
             "instructions" => instructions,
+        };
+
+        // If opt_input_context is provided, we should merge it into the input context
+        let input_context = if let Some(opt_input_context) = opt_input_context {
+            input_context.into_iter().chain(opt_input_context.clone()).collect()
+        } else {
+            input_context
         };
 
         // Save the chat wrapper state in case we need to retry generating the output JSON
@@ -325,7 +402,7 @@ r#"{
             println!("Attempting to build JSON (attempt {})", attempts + 1);
             if let Ok(parsed_json) = serde_json::from_str::<JsonValue>(&captures["json"]) {
                 // Run template validation on the JSON object
-                match template.validate(&parsed_json) {
+                match template.validate(&parsed_json, &input_context) {
                     Ok(_) => {
                         break Some(parsed_json);
                     }

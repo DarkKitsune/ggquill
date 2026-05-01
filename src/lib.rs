@@ -54,6 +54,7 @@ mod tests {
                     "enemies",
                     array(object([
                         property("name", string()),
+                        property("species", one_of(["<enemy species>"])),
                         property("health", number(Some(0.0), Some(100.0))),
                         property(
                             "position",
@@ -72,13 +73,18 @@ mod tests {
 
         // Define some instructions for building JSON and print the generated JSON outputs
         let instructions_list = [
-            "Build a JSON object representing a scene tree for an interesting horror game with 'enemies' populated by lovecraftian monsters, \
+            "Build a JSON object representing a scene tree for an interesting horror game with 'enemies' populated by fantastical beasts, \
             The player should be in good health and be centered at the origin.",
         ];
 
+        // Define the input context
+        let input_context = string_map! {
+            "enemy species" => "goblin|troll|vampire|werewolf|giant spider",
+        };
+
         for instructions in instructions_list {
             let output_json = json_builder
-                .build_json(instructions, &template, Some(5))
+                .build_json(instructions, &template, Some(&input_context), Some(5))
                 .unwrap();
             println!(
                 "\nInstructions: {}\nGenerated JSON:\n{}\n",
