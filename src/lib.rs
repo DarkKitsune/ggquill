@@ -24,13 +24,7 @@ mod tests {
 
     #[test]
     fn json_builder() {
-        #[derive(Debug)]
-        enum EyeColor {
-            Blue,
-            Green,
-            Brown,
-        }
-
+        // Represents a student with some basic information
         #[derive(Debug)]
         #[allow(dead_code)]
         struct Student {
@@ -40,6 +34,16 @@ mod tests {
             grade_letter: String,
         }
 
+        // The student's eye color
+        #[derive(Debug)]
+        enum EyeColor {
+            Blue,
+            Green,
+            Brown,
+        }
+
+        // Implement the `FromJson` trait for `Student`, which provides the template for the expected JSON structure
+        // and parsing logic for the resulting JSON.
         impl FromJson for Student {
             fn template() -> TemplateNode {
                 object([
@@ -51,23 +55,15 @@ mod tests {
             }
 
             fn from_json(json: &Map<String, JsonValue>) -> Result<Self> {
-                let name = json["name"]
-                    .as_str()
-                    .unwrap()
-                    .to_string();
-                let age = json["age"]
-                    .as_u64()
-                    .unwrap() as u32;
+                let name = json["name"].as_str().unwrap().to_string();
+                let age = json["age"].as_u64().unwrap() as u32;
                 let eye_color = match json["eye_color"].as_str().unwrap() {
                     "blue" => EyeColor::Blue,
                     "green" => EyeColor::Green,
                     "brown" => EyeColor::Brown,
-                    _ => unreachable!(),
+                    _ => unreachable!(), // The model should only be able to generate one of the three valid eye colors
                 };
-                let grade_letter = json["grade_letter"]
-                    .as_str()
-                    .unwrap()
-                    .to_string();
+                let grade_letter = json["grade_letter"].as_str().unwrap().to_string();
 
                 Ok(Student {
                     name,
@@ -102,10 +98,7 @@ mod tests {
                 )
                 .unwrap();
 
-            println!(
-                "Generated student:\n{:#?}\n\n",
-                student
-            );
+            println!("Generated student:\n{:#?}\n\n", student);
         }
     }
 

@@ -28,7 +28,9 @@ impl TemplateNode {
             let opt = opt.into();
 
             // We only want to split string options, if the option is not a string then we just add it as is
-            if let Some(opt_str) = opt.as_str() && opt_str.contains('|') {
+            if let Some(opt_str) = opt.as_str()
+                && opt_str.contains('|')
+            {
                 // Split the option string by "|" and trim whitespace from each resulting option, then use extend to add them
                 expanded_options.extend(opt_str.split('|').map(|s| s.trim().into()));
             } else {
@@ -36,7 +38,7 @@ impl TemplateNode {
                 expanded_options.push(opt);
             }
         }
-        
+
         TemplateNode::OneOf(expanded_options)
     }
 
@@ -107,7 +109,11 @@ impl TemplateNode {
     }
 
     /// Validates a given JSON value against this template node, returning an error if the value does not conform to the template.
-    pub fn validate(&self, value: &JsonValue, input_context: &HashMap<String, String>) -> Result<()> {
+    pub fn validate(
+        &self,
+        value: &JsonValue,
+        input_context: &HashMap<String, String>,
+    ) -> Result<()> {
         // IMPORTANT!
         // Don't forget to substitute context keys in any string values in the template before validating against them, using the input_context for substitution!!!
         // Otherwise there will be a mismatch between the template passed as a JSON schema in the input context, and this template (which may cause validation errors)!!!
@@ -130,7 +136,10 @@ impl TemplateNode {
 
                             // If the substituted string contains '|' then we should split it into multiple options
                             if substituted.contains('|') {
-                                substituted.split('|').map(|s| s.trim().into()).collect::<Vec<_>>()
+                                substituted
+                                    .split('|')
+                                    .map(|s| s.trim().into())
+                                    .collect::<Vec<_>>()
                             } else {
                                 vec![substituted.into()]
                             }
@@ -321,7 +330,7 @@ impl JsonBuilder {
         let system_schema = "You are a helpful assistant that builds JSON objects based on the provided JSON schema and instructions. \
             Follow the instructions carefully to construct the JSON object. \
             If the JSON schema contains an object such as {\"possible_values\": [...]}, then select the most fitting value from the array.";
-        
+
         // Input schema defines the structure of the user instructions, which is just a labelled text block containing the instructions
         let input_schema = ChatSchema::new()
             .with_text(Some("JSON Schema".to_string()), "<template>")
@@ -464,6 +473,12 @@ r#"{
 
         self.build_json(instructions, &template, Some(&input_context), max_attempts)
             .ok_or(anyhow::anyhow!("Failed to generate JSON"))
-            .and_then(|json_obj| T::from_json(json_obj.as_object().expect("Expected JSON object; is the root of the template an object?")))
+            .and_then(|json_obj| {
+                T::from_json(
+                    json_obj
+                        .as_object()
+                        .expect("Expected JSON object; is the root of the template an object?"),
+                )
+            })
     }
 }
