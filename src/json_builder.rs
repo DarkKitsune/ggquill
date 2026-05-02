@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use anyhow::Result;
+use serde_json::Map;
 
 use crate::{chat_schema::substitute_context_keys, prelude::*};
 
@@ -295,7 +296,21 @@ pub fn optional_property(name: &str, node: TemplateNode) -> TemplateProperty {
     TemplateProperty::optional(name, node)
 }
 
-/// Builds JSON objects using the given instructions
+/// Trait for types that can be built from a JSON object, using a TemplateNode for validation.
+/// These types can be used as the output type for `JsonBuilder::build`.
+pub trait FromJson: Sized {
+    /// Returns the TemplateNode that defines the expected structure of the JSON object for this type. This is used for validation purposes.
+    fn template() -> TemplateNode;
+    /// Constructs an instance of this type from a JSON value, returning an error if the JSON does not conform to the expected structure defined by the template.
+    fn from_json(json: &Map<String, JsonValue>) -> Result<Self>;
+    /// Used automatically by `JsonBuilder::build` as the default input context for the chat wrapper when building an instance of this type.
+    /// This should provide a default value for all context key-value pairs expected by the template.
+    fn default_input_context() -> HashMap<String, String> {
+        HashMap::new()
+    }
+}
+
+/// Builds JSON objects and types that implement `FromJson` using the given instructions
 pub struct JsonBuilder {
     chat_wrapper: SimpleChatWrapper,
 }
@@ -383,17 +398,15 @@ r#"{
         max_attempts: Option<usize>,
     ) -> Option<JsonValue> {
         // Create the input context for the chat wrapper using the provided instructions
-        let input_context = string_map! {
+        let mut input_context = string_map! {
             "template" => template,
             "instructions" => instructions,
         };
 
         // If opt_input_context is provided, we should merge it into the input context
-        let input_context = if let Some(opt_input_context) = opt_input_context {
-            input_context.into_iter().chain(opt_input_context.clone()).collect()
-        } else {
-            input_context
-        };
+        if let Some(opt_input_context) = opt_input_context {
+            input_context.extend(opt_input_context.clone());
+        }
 
         // Save the chat wrapper state in case we need to retry generating the output JSON
         let saved_state = self.chat_wrapper.get_state();
@@ -429,5 +442,28 @@ r#"{
                 break None;
             }
         }
+    }
+
+    /// Builds an instance of a type that implements `FromJson` based on the provided instructions and returns it.
+    /// Returns None if a valid JSON object could not be generated or if the JSON did not conform to the expected structure defined by the template after the given number of attempts.
+    /// If `max_attempts` is None then it will keep trying indefinitely until a valid JSON is generated and successfully parsed into the output type.
+    pub fn build<T: FromJson>(
+        &mut self,
+        instructions: &str,
+        opt_input_context: Option<&HashMap<String, String>>,
+        max_attempts: Option<usize>,
+    ) -> Result<T> {
+        // First get the template and input context from the output type T
+        let template = T::template();
+        let mut input_context = T::default_input_context();
+
+        // If opt_input_context is provided, we should merge it into the input context
+        if let Some(opt_input_context) = opt_input_context {
+            input_context.extend(opt_input_context.clone());
+        }
+
+        self.build_json(instructions, &template, Some(&input_context), max_attempts)
+            .ok_or(anyhow::anyhow!("Failed to generate JSON"))
+            .and_then(|json_obj| T::from_json(json_obj.as_object().expect("Expected JSON object; is the root of the template an object?")))
     }
 }

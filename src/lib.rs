@@ -13,7 +13,9 @@ pub mod token_string;
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{collections::HashMap, io::Write};
+
+    use anyhow::Result;
 
     use crate::{
         chat_wrapper::{ChatWrapper, SimpleChatWrapper},
@@ -22,6 +24,66 @@ mod tests {
 
     #[test]
     fn json_builder() {
+        #[derive(Debug)]
+        enum EyeColor {
+            Blue,
+            Green,
+            Brown,
+        }
+
+        #[derive(Debug)]
+        #[allow(dead_code)]
+        struct Student {
+            name: String,
+            age: u32,
+            eye_color: EyeColor,
+            grade_letter: String,
+        }
+
+        impl FromJson for Student {
+            fn template() -> TemplateNode {
+                object([
+                    property("name", string()),
+                    property("age", number(Some(0.0), None)),
+                    property("eye_color", one_of(["blue", "green", "brown"])),
+                    property("grade_letter", one_of(["<possible grades>"])),
+                ])
+            }
+
+            fn from_json(json: &Map<String, JsonValue>) -> Result<Self> {
+                let name = json["name"]
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                let age = json["age"]
+                    .as_u64()
+                    .unwrap() as u32;
+                let eye_color = match json["eye_color"].as_str().unwrap() {
+                    "blue" => EyeColor::Blue,
+                    "green" => EyeColor::Green,
+                    "brown" => EyeColor::Brown,
+                    _ => unreachable!(),
+                };
+                let grade_letter = json["grade_letter"]
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+
+                Ok(Student {
+                    name,
+                    age,
+                    eye_color,
+                    grade_letter,
+                })
+            }
+
+            fn default_input_context() -> HashMap<String, String> {
+                string_map! {
+                    "possible grades" => "A|B|C|D|F",
+                }
+            }
+        }
+
         const SEED: u64 = 13579;
 
         // Create the model
@@ -30,66 +92,19 @@ mod tests {
         // Create a JSON builder
         let mut json_builder = JsonBuilder::new(&mut model);
 
-        // Define a template for the expected JSON structure
-        let template = object([property(
-            "scene",
-            object([
-                property("location_name", string()),
-                property("location_description", string()),
-                property(
-                    "player",
-                    object([
-                        property("health", number(Some(0.0), Some(100.0))),
-                        property(
-                            "position",
-                            object([
-                                property("x", number(None, None)),
-                                property("y", number(None, None)),
-                                property("z", number(None, None)),
-                            ]),
-                        ),
-                    ]),
-                ),
-                property(
-                    "enemies",
-                    array(object([
-                        property("name", string()),
-                        property("species", one_of(["<enemy species>"])),
-                        property("health", number(Some(0.0), Some(100.0))),
-                        property(
-                            "position",
-                            object([
-                                property("x", number(None, None)),
-                                property("y", number(None, None)),
-                                property("z", number(None, None)),
-                            ]),
-                        ),
-                    ])),
-                ),
-            ]),
-        )]);
-
-        println!("Template for expected JSON structure:\n{}\n", template);
-
-        // Define some instructions for building JSON and print the generated JSON outputs
-        let instructions_list = [
-            "Build a JSON object representing a scene tree for an interesting horror game with 'enemies' populated by fantastical beasts, \
-            The player should be in good health and be centered at the origin.",
-        ];
-
-        // Define the input context
-        let input_context = string_map! {
-            "enemy species" => "goblin|troll|vampire|werewolf|giant spider",
-        };
-
-        for instructions in instructions_list {
-            let output_json = json_builder
-                .build_json(instructions, &template, Some(&input_context), Some(5))
+        // Build a few Student objects
+        for _ in 0..5 {
+            let student = json_builder
+                .build::<Student>(
+                    "Create a JSON object representing a fictional student.",
+                    None,
+                    Some(3),
+                )
                 .unwrap();
+
             println!(
-                "\nInstructions: {}\nGenerated JSON:\n{}\n",
-                instructions,
-                serde_json::to_string_pretty(&output_json).unwrap()
+                "Generated student:\n{:#?}\n\n",
+                student
             );
         }
     }
