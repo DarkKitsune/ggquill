@@ -152,7 +152,7 @@ mod tests {
             input_schema,
             output_schema,
             &examples,
-            vec!["Answer concisely and accurately, and explain your answer further.".to_string()],
+            vec!["Answer concisely and accurately in the provided tone.".to_string()],
         );
 
         // Get the output for each trivia question and print it

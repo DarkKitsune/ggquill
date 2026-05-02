@@ -107,6 +107,9 @@ impl TemplateNode {
 
     /// Validates a given JSON value against this template node, returning an error if the value does not conform to the template.
     pub fn validate(&self, value: &JsonValue, input_context: &HashMap<String, String>) -> Result<()> {
+        // IMPORTANT!
+        // Don't forget to substitute context keys in any string values in the template before validating against them, using the input_context for substitution!!!
+        // Otherwise there will be a mismatch between the template passed as a JSON schema in the input context, and this template (which may cause validation errors)!!!
         match self {
             TemplateNode::String => {
                 if !value.is_string() {
@@ -361,7 +364,8 @@ r#"{
             output_schema,
             &examples,
             vec![
-                "Ensure that the JSON is well-formed and only includes relevant fields based on the instructions.".to_string(),
+                "Ensure that the JSON is well-formed and only includes relevant fields based on the instructions. \
+                Be creative where appropriate, yet accurate.".to_string(),
             ],
         );
 

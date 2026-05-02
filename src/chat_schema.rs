@@ -513,7 +513,7 @@ impl SchemaBlock for TextBlock {
 
         // Else return the text, with the label as a heading if it exists
         let label_part = if let Some(label) = &self.label {
-            format!("**{}:**\n", label)
+            format!("# {}:\n", label)
         } else {
             String::new()
         };
@@ -552,7 +552,7 @@ impl SchemaBlock for ListBlock {
     fn to_raw_string(&self, _is_output: bool, context: &HashMap<String, String>) -> Option<String> {
         // Start with the label if it exists
         let label_part = if let Some(label) = &self.label {
-            format!("**{}:**\n", label)
+            format!("# {}:\n", label)
         } else {
             String::new()
         };
@@ -624,7 +624,7 @@ impl SchemaBlock for JsonBlock {
     fn to_raw_string(&self, is_output: bool, _context: &HashMap<String, String>) -> Option<String> {
         // Start with the label if it exists
         let mut raw_string = if let Some(label) = &self.label {
-            format!("**{}:**\n", label)
+            format!("# {}:\n", label)
         } else {
             String::new()
         };

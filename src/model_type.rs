@@ -172,7 +172,7 @@ impl ModelType {
 
         // If there are instructions for how to respond, then we add them to the system prompt as a bullet list in a <how_to_respond> block
         if !how_to_respond.is_empty() {
-            prompt.push_str("\n**How you should respond:**\n<how_to_respond>\n");
+            prompt.push_str("\n# How you should respond:\n<how_to_respond>\n");
             for instruction in how_to_respond {
                 // Replace newlines in the instruction with spaces so that it doesn't break the formatting of the bullet points
                 let instruction = instruction.replace("\n", " ");
@@ -185,7 +185,7 @@ impl ModelType {
 
         // If there is extra data to provide to the model, then we add it to the system prompt in a <knowledge> block
         if let Some(extra_data) = extra_data {
-            prompt.push_str("\n**What you know:**\n<knowledge>\n");
+            prompt.push_str("\n# What you know:\n<knowledge>\n");
 
             // Add each key-value pair in the extra data with formatting as a bullet list
             for (key, value) in extra_data {
@@ -198,8 +198,8 @@ impl ModelType {
                 // For each newline in value we need to add an extra indentation level so that the formatting of the code block isn't broken by newlines
                 let value = value.replace("\n", "\n    ");
 
-                // Push the key-value pair to the prompt as a bullet point with the key in bold and the value in an indented code block
-                prompt.push_str(&format!("- **{}:** ```\n    {}```\n", key, value));
+                // Push the key-value pair to the prompt as a bullet point with the key and the value in a code block
+                prompt.push_str(&format!("- {}: `{}`\n", key, value));
             }
 
             // End the knowledge block
