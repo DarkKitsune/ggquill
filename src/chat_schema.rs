@@ -7,6 +7,11 @@ use crate::{chat::ChatMessage, prelude::InferIter};
 
 pub const SCHEMA_PASSTHROUGH_INPUT: &str = "input";
 
+/// Formats the given string as a label for a block
+fn format_label(label: &str) -> String {
+    format!("# {}\n", label)
+}
+
 /// Helper function for parsing context keys in the format "<key>" and substituting
 /// them with their JSON values from the context.
 pub fn substitute_context_keys(input: &str, context: &HashMap<String, String>) -> String {
@@ -183,8 +188,8 @@ impl ChatSchema {
             if let Some(written) = block.write_input(iter, &context) {
                 written_so_far.push_str(&written);
                 if i < self.blocks.len() - 1 {
-                    iter.push_str("\n\n");
-                    written_so_far.push_str("\n\n");
+                    iter.push_str("\n---\n");
+                    written_so_far.push_str("\n---\n");
                 }
             }
         }
@@ -201,8 +206,8 @@ impl ChatSchema {
             if let Some(written) = block.write_output(iter, &mut captures) {
                 written_so_far.push_str(&written);
                 if i < self.blocks.len() - 1 {
-                    iter.push_str("\n\n");
-                    written_so_far.push_str("\n\n");
+                    iter.push_str("\n---\n");
+                    written_so_far.push_str("\n---\n");
                 }
             }
         }
@@ -226,7 +231,7 @@ impl ChatSchema {
             .iter()
             .filter_map(|block| block.to_input_string(&context))
             .collect::<Vec<_>>()
-            .join("\n\n")
+            .join("\n---\n")
     }
 
     /// Converts the schema to a string as an output, replacing each inferable key with the corresponding value in `output_captures`.
@@ -308,9 +313,9 @@ impl ChatSchema {
                 }
             }
 
-            // Add a newline after each block (except the last one)
+            // Add a separator after each block (except the last one)
             if i < self.blocks.len() - 1 {
-                written_so_far.push_str("\n\n");
+                written_so_far.push_str("\n---\n");
             }
         }
 
@@ -513,7 +518,7 @@ impl SchemaBlock for TextBlock {
 
         // Else return the text, with the label as a heading if it exists
         let label_part = if let Some(label) = &self.label {
-            format!("# {}:\n", label)
+            format_label(label)
         } else {
             String::new()
         };
@@ -552,7 +557,7 @@ impl SchemaBlock for ListBlock {
     fn to_raw_string(&self, _is_output: bool, context: &HashMap<String, String>) -> Option<String> {
         // Start with the label if it exists
         let label_part = if let Some(label) = &self.label {
-            format!("# {}:\n", label)
+            format_label(label)
         } else {
             String::new()
         };
@@ -624,7 +629,7 @@ impl SchemaBlock for JsonBlock {
     fn to_raw_string(&self, is_output: bool, _context: &HashMap<String, String>) -> Option<String> {
         // Start with the label if it exists
         let mut raw_string = if let Some(label) = &self.label {
-            format!("# {}:\n", label)
+            format_label(label)
         } else {
             String::new()
         };
