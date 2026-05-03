@@ -430,6 +430,19 @@ impl InferIter {
         self.pending_tokens.as_ref()
     }
 
+    /// Get a clone of the model used by this InferIter.
+    /// For safety, this requires clearing the model's cache, so it may have a slight extra overhead.
+    pub fn clone_model(&self) -> Model {
+        let mut model = self.model.clone();
+        model.clear_cache();
+        model
+    }
+
+    /// Tokenize some text using the model's tokenizer and return it as a TokenString with the correct model reference.
+    pub fn tokenize(&self, text: impl IntoTokenString) -> TokenString {
+        self.model.tokenize(text)
+    }
+
     /// Updates the inference parameters for this InferIter.
     pub fn update_params(&mut self, params: &InferParams) {
         self.repeat_penalty = params.repeat_penalty;

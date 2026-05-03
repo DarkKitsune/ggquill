@@ -326,7 +326,7 @@ pub struct JsonBuilder {
 
 impl JsonBuilder {
     /// Creates a new JsonBuilder with the provided model. The model should be a capable instruction-following model.
-    pub fn new(model: &mut Model) -> Self {
+    pub fn new(model: Model) -> Self {
         let system_schema = "You are a helpful assistant that builds JSON objects based on the provided JSON schema and instructions. \
             Follow the instructions carefully to construct the JSON object. \
             If the JSON schema contains an object such as {\"possible_values\": [...]}, then select the most fitting value from the array.";
@@ -391,7 +391,7 @@ r#"{
                 "Ensure that the JSON is well-formed and only includes relevant fields based on the instructions. \
                 Be creative where appropriate, yet accurate.".to_string(),
             ],
-        );
+        ).0;
 
         Self { chat_wrapper }
     }
@@ -417,8 +417,8 @@ r#"{
             input_context.extend(opt_input_context.clone());
         }
 
-        // Save the chat wrapper state in case we need to retry generating the output JSON
-        let saved_state = self.chat_wrapper.get_state();
+        // Create a checkpoint in case we need to retry generating the output JSON
+        let checkpoint = self.chat_wrapper.create_checkpoint();
 
         // Loop to keep trying to generate a valid JSON output until we succeed or reach the maximum number of attempts
         let mut attempts = 0;
@@ -440,8 +440,8 @@ r#"{
                 }
             }
 
-            // We failed to parse the JSON, so reset the chat wrapper to the saved state
-            self.chat_wrapper.reset(&saved_state);
+            // We failed to parse the JSON, so reset the chat wrapper to to the checkpoint
+            self.chat_wrapper.reset_to_checkpoint(&checkpoint);
 
             // Then increment the attempt counter and check if we've reached the maximum number of attempts (if specified)
             attempts += 1;

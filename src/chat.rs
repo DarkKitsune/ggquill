@@ -1,13 +1,21 @@
 use std::fmt::Display;
 
+use crate::chat_schema::ChatSchema;
+use crate::chat_wrapper::{ChatWrapper, SimpleChatWrapper};
 use crate::data::StringMap;
 use crate::model::{MAX_TOKENS, Model};
 use crate::prelude::{InferIter, InferParams, ModelType, TokenString};
+use crate::string_map;
 
-const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful assistant that tries to help the user with their requests as best as you can. \
-    You should always try to be as helpful and informative as possible, while also being concise and clear in your responses. \
-    Avoid unnecessary repetition and fluff, and try to get to the point quickly.";
-const COMPRESS_MEMORY_THRESHOLD: usize = MAX_TOKENS / 2;
+const LONG_CONTEXT_THRESHOLD: usize = MAX_TOKENS * 2 / 3;
+
+/// A saved checkpoint in the chat, which can be used to reset the chat to a previous state.
+/// This currently only saves text data and the context of the internal `InferIter`.
+pub struct ChatCheckpoint {
+    long_term_memory: Option<String>,
+    chat_history: Vec<ChatMessage>,
+    context_tokens: TokenString,
+}
 
 /// Represents a chat between user and model.
 pub struct Chat {
@@ -18,6 +26,7 @@ pub struct Chat {
     chat_history: Vec<ChatMessage>,
     /// When there are too many messages we summarize the long_term_memory and half of the chat history together,
     /// store the summary in long_term_memory.
+    /// This should not be written to unless you know what you are doing, as it's meant to be synchronized with the infer_iter.
     long_term_memory: Option<String>,
     how_to_respond: Vec<String>,
     extra_data: Option<StringMap>,
@@ -26,13 +35,13 @@ pub struct Chat {
 impl Chat {
     /// Creates a new chat.
     pub fn new(
-        model: &mut Model,
+        model: Model,
         system_prompt: impl AsRef<str>,
         chat_history: &[ChatMessage],
         infer_params: &InferParams,
         how_to_respond: impl Into<Vec<String>>,
         extra_data: Option<StringMap>,
-    ) -> Self {
+    ) -> (Self, ChatCheckpoint) {
         let how_to_respond = how_to_respond.into();
         // Create the initial context for the chat using the model's prompt template and tokenize it
         let full_prompt = model.model_type().create_chat_prompt(
@@ -47,65 +56,37 @@ impl Chat {
         let initial_context = model.tokenize(full_prompt);
 
         // Create the InferIter for the chat with the initial context
+        let model_type = model.model_type();
         let infer_iter = model.infer_iter(initial_context, infer_params).unwrap();
 
-        Self {
+        let chat = Self {
             system_prompt: system_prompt.as_ref().to_string(),
-            model_type: model.model_type(),
+            model_type,
             infer_iter,
             chat_history: chat_history.to_vec(),
             long_term_memory: None,
             how_to_respond,
             extra_data,
+        };
+
+        let checkpoint = chat.create_checkpoint();
+        (chat, checkpoint)
+    }
+
+    /// Saves the current state of the chat as a ChatCheckpoint which can be used to reset the chat back to this state.
+    pub fn create_checkpoint(&self) -> ChatCheckpoint {
+        ChatCheckpoint {
+            long_term_memory: self.long_term_memory.clone(),
+            chat_history: self.chat_history.clone(),
+            context_tokens: self.infer_iter.full_context(),
         }
     }
 
-    /// Resets the chat using a given parameters.
-    pub fn reset(
-        &mut self,
-        system_prompt: impl AsRef<str>,
-        chat_history: Vec<ChatMessage>,
-        long_term_memory: Option<String>,
-    ) {
-        self.system_prompt = system_prompt.as_ref().to_string();
-        // If long term memory is provided, set it in key "memory" of self.extra_data for the prompt template
-        // Also create self.extra_data if it doesn't exist yet
-        if let Some(long_term_memory) = &long_term_memory {
-            let extra_data = self.extra_data.get_or_insert_with(StringMap::new);
-            extra_data.insert("Your past memory".to_string(), long_term_memory.clone());
-        }
-
-        // Create the initial context for the chat using the model's prompt template and tokenize it
-        let full_prompt = self.model_type.create_chat_prompt(
-            &self.system_prompt,
-            &chat_history,
-            &self
-                .how_to_respond
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>(),
-            self.extra_data.as_ref(),
-        );
-        let initial_context = self
-            .infer_iter
-            .last_context()
-            .model
-            .borrow()
-            .tokenize(full_prompt);
-
-        // Reset the InferIter for the chat with the new initial context
-        self.infer_iter.reset(initial_context);
-        self.chat_history = chat_history;
-        self.long_term_memory = long_term_memory;
-    }
-
-    /// Gets the chat's current state (system prompt, chat history, and long term memory) as a tuple.
-    pub fn get_state(&self) -> (String, Vec<ChatMessage>, Option<String>) {
-        (
-            self.system_prompt.clone(),
-            self.chat_history.clone(),
-            self.long_term_memory.clone(),
-        )
+    /// Resets the chat to a previous state captured by `create_checkpoint()`.
+    pub fn reset_to_checkpoint(&mut self, checkpoint: &ChatCheckpoint) {
+        self.chat_history = checkpoint.chat_history.clone();
+        self.long_term_memory = checkpoint.long_term_memory.clone();
+        self.infer_iter.reset(checkpoint.context_tokens.clone());
     }
 
     /// Push an existing message to the chat history.
@@ -155,8 +136,8 @@ impl Chat {
         mut after_response: impl FnMut(&str, &mut InferIter, Option<&str>) -> Option<R>,
     ) -> Option<(&str, R)> {
         // If the chat history is too long, we want to compress the memory.
-        if self.token_len() > COMPRESS_MEMORY_THRESHOLD {
-            self.compress_memory();
+        if self.is_context_long() {
+            self.compress();
         }
 
         // Store the current InferIter context before the message
@@ -254,7 +235,7 @@ impl Chat {
     }
 
     /// Get the token length of the current full chat context.
-    fn token_len(&self) -> usize {
+    pub fn token_len(&self) -> usize {
         self.infer_iter.last_context().len()
             + self
                 .infer_iter
@@ -262,72 +243,107 @@ impl Chat {
                 .map_or(0, |pending| pending.len())
     }
 
-    /// Compress the memory of the chat by summarizing the past_memory and half of the chat history together,
-    /// storing the summary in past_memory, and then resetting the chat history to just the other half of the chat history.
-    fn compress_memory(&mut self) {
-        println!(
-            "Compressing memory... Current token length: {}",
-            self.token_len()
-        );
+    /// Gets whether the chat's context is getting long enough that old details may soon start to be forgotten.
+    pub fn is_context_long(&self) -> bool {
+        self.token_len() > LONG_CONTEXT_THRESHOLD
+    }
 
-        // Start with either the long_term_memory or an empty string as the base for the summary prompt
-        let mut prompt = self
-            .long_term_memory
-            .clone()
-            .map_or_else(String::new, |mem| format!("{}\n\n", mem));
-
-        // Get the message count of half of the chat history (the older half) to include in the summary
-        let half = self.chat_history.len() / 2;
-        // If we will end on a user message then decrement by one
-        let half = if half > 1 && matches!(self.chat_history[half - 1].sender(), ChatRole::User) {
-            half - 1
-        } else {
-            half
-        };
-
-        // Get the last system prompt message appearing in the history before half
-        let new_system_prompt = self.chat_history[..half]
+    /// Compress the chat by joining the long term memory (if it exists) and the oldest half of the chat history into a single string,
+    /// summarizing it using the model, creating a new context and resetting the infer_iter to it. Also replaces the old long term memory with the new summary.
+    pub(crate) fn compress(&mut self) {
+        // Get the oldest half of the chat history and join it into a single string
+        let half_history_len = self.chat_history.len() / 2;
+        let remaining_history = self.chat_history.split_off(half_history_len);
+        let history_string = self
+            .chat_history
             .iter()
-            .rev()
-            .find(|msg| matches!(msg.sender(), ChatRole::Other(name) if name == "system"))
-            .map(|msg| msg.content())
-            .unwrap_or(DEFAULT_SYSTEM_PROMPT)
-            .to_string();
+            .map(ChatMessage::to_string)
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
-        // Then add the oldest half of the chat history to the prompt
-        for message in &self.chat_history[..half] {
-            prompt.push_str(&format!("{}: {}\n", message.sender(), message.content()));
+        // Create the full memory string to summarize by joining the long term memory (if it exists) and the history string
+        let mut full_memory = self.long_term_memory.clone().unwrap_or_default();
+        if !full_memory.is_empty() && !history_string.is_empty() {
+            full_memory.push_str("\n\n");
         }
+        full_memory.push_str(&history_string);
 
-        // Get just the newer half of the chat history as a new vec
-        let new_chat_history = self.chat_history[half..].to_vec();
+        // Summarize the full memory string using a ChatWrapper.
+        let model = self.infer_iter.clone_model();
+        let system_schema = "You are a helpful assistant that summarizes text.";
+        let input_schema =
+            ChatSchema::new().with_text(Some("Text to Summarize".to_string()), "<input>");
+        let output_schema =
+            ChatSchema::new().with_text(Some("Summary".to_string()), "\"<\" :: summary>");
+        let example_pairs = [(
+            // Full conversation text
+            string_map! {
+                "input" =>
+"You (the assistant) and the user are talking about how you like cats.
 
-        // Reset self to a new state for summarization
-        self.reset(
-            "You are an assistant who summarizes conversations between yourself and the user in a concise manner.",
-            vec![],
-            self.long_term_memory.clone(),
+Assistant:
+I really like cats, they are so cute and fluffy!
+
+User:
+Yeah, I agree! Do you have any cats?
+
+Assistant:
+i don't have any cats, but I wish I did! I just love them so much! Do you have any cats?
+
+User:
+I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
+            },
+            // Summary
+            string_map! {
+                "summary" => "You and the user are talking about how much you like cats. \
+                You express a desire to own cats, and the user has just mentioned owning a playful gray tabby named Whiskers."
+            },
+        )];
+        let mut summarizer = SimpleChatWrapper::new(
+            model,
+            &InferParams::new_logical(),
+            system_schema,
+            input_schema,
+            output_schema,
+            &example_pairs,
+            [
+                "Summarize the provided conversation in a concise way, while retaining as much **useful** information as possible.".to_string(),
+                "The summary should be wrapped in '\"' and as short as possible while being informative.".to_string(),
+                "Make sure to end the summary by mentioning the most recent message in the conversation.".to_string(),
+            ]
+        ).0;
+        let summary = summarizer
+            .get_output(&string_map! {
+                "input" => full_memory
+            })
+            .into_capture("summary")
+            .unwrap();
+
+        // Join the system prompt and the new summary together to create a new system prompt with the future long term memory in the context
+        let system_prompt_and_summary = format!(
+            "{}\n---\n# Conversation So Far (Summarized)\n{}",
+            self.system_prompt, summary
         );
 
-        // Add message to the chat asking for a summary of the prompt to be generated
-        self.push_message(ChatMessage::new(
-            ChatRole::User,
-            format!(
-                "Summarize this conversation between us in a concise manner, preserving important details and context:\n{}",
-                prompt
-            ),
-        ));
+        // Create a new context for the chat using the model's prompt template with the remaining half of the chat history, then reset the infer_iter to it.
+        let full_prompt = self.model_type.create_chat_prompt(
+            system_prompt_and_summary,
+            &remaining_history,
+            &self
+                .how_to_respond
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
+            self.extra_data.as_ref(),
+        );
+        let new_context = self.infer_iter.tokenize(full_prompt);
+        self.infer_iter.reset(new_context);
 
-        // Infer the summary from the model
-        let summary = self
-            .infer_message(&ChatRole::Assistant, Some("Summary:\n"), &[])
-            .trim()
-            .to_string();
+        // Update self
+        self.long_term_memory = Some(summary.clone());
+        self.chat_history = remaining_history;
 
-        // Reset self to the new state for further conversing
-        self.reset(new_system_prompt, new_chat_history, Some(summary));
-
-        println!("Memory compressed. New token length: {}", self.token_len());
+        println!("Chat compressed. New token length: {}", self.token_len());
     }
 
     /// Update the inference parameters for the chat's InferIter.

@@ -9,7 +9,7 @@ pub struct Humanizer {
 
 impl Humanizer {
     /// Creates a new Humanizer with the provided model, seed, and temperature.
-    pub fn new(model: &mut Model) -> Self {
+    pub fn new(model: Model) -> Self {
         let system_schema = "You are a helpful writing assistant. \
         Your goal is to take a list of input strings or values separated by '|' and join them together into a string that a person can easily read and understand. \
         The final output should be a well formatted and grammatically correct string in double quotes which incorporates all of the inputs. \
@@ -73,7 +73,8 @@ impl Humanizer {
             output_schema,
             &examples,
             vec![],
-        );
+        )
+        .0;
 
         Self { chat_wrapper }
     }

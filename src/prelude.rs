@@ -1,6 +1,6 @@
 pub use crate::actor::Actor;
 pub use crate::chat::{Chat, ChatMessage, ChatRole};
-pub use crate::chat_schema::{ChatSchema, SCHEMA_PASSTHROUGH_INPUT, create_chat_wrapper_examples};
+pub use crate::chat_schema::*;
 pub use crate::chat_wrapper::{ChatWrapper, SimpleChatWrapper};
 pub use crate::data::{JsonValue, StringMap};
 pub use crate::humanizer::Humanizer;

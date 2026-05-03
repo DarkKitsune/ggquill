@@ -83,10 +83,10 @@ mod tests {
         const SEED: u64 = 13579;
 
         // Create the model
-        let mut model = Model::new(ModelType::Qwen3Instruct(ModelSize::Small), SEED, true).unwrap();
+        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Small), SEED, true).unwrap();
 
         // Create a JSON builder
-        let mut json_builder = JsonBuilder::new(&mut model);
+        let mut json_builder = JsonBuilder::new(model);
 
         // Build a few Student objects
         for _ in 0..5 {
@@ -114,8 +114,7 @@ mod tests {
         ];
 
         // Create the model
-        let mut model =
-            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Create the schemas for the chat wrapper
         // String slices also work as schemas
@@ -154,14 +153,15 @@ mod tests {
 
         // Create the chat wrapper
         let mut chat_wrapper = SimpleChatWrapper::new(
-            &mut model,
+            model,
             &InferParams::new_balanced(),
             system_schema,
             input_schema,
             output_schema,
             &examples,
             vec!["Answer concisely and accurately in the provided tone.".to_string()],
-        );
+        )
+        .0;
 
         // Get the output for each trivia question and print it
         for (question, tone) in TRIVIA_QUESTIONS {
@@ -175,12 +175,6 @@ mod tests {
                 question, tone, output["answer"], output["explanation"]
             );
         }
-
-        // Print timings
-        println!(
-            "\n\nAverage tok/s: {}",
-            model.average_tokens_per_second().unwrap()
-        );
     }
 
     #[test]
@@ -189,12 +183,11 @@ mod tests {
         const CONVERSATION_TURNS: usize = 14;
 
         // Create the model
-        let mut model =
-            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Start a chat
         let mut chat = Chat::new(
-            &mut model,
+            model,
             "You are a helpful assistant and friendly person who has a great imagination, \
             an open mind, and is fun to talk to.",
             &[],
@@ -207,10 +200,11 @@ mod tests {
                 "your name" => "Quill",
                 "the user's name" => "User",
             }),
-        );
+        )
+        .0;
 
         // Infer a conversation
-        for _ in 0..CONVERSATION_TURNS {
+        for i in 0..CONVERSATION_TURNS {
             // Get the user message from the console input
             let mut input = String::new();
             print!("User: ");
@@ -225,6 +219,11 @@ mod tests {
             let message = chat.infer_message(&ChatRole::Assistant, None, &[]);
 
             println!("\n\n\nAssistant: {}\n\n\n", message);
+
+            // Compress the chat every other turn to test how stable it remains
+            if i % 2 == 1 {
+                chat.compress();
+            }
         }
     }
 
@@ -265,11 +264,10 @@ mod tests {
         ];
 
         // Create the model
-        let mut model =
-            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Create a humanizer
-        let mut humanizer = Humanizer::new(&mut model);
+        let mut humanizer = Humanizer::new(model);
 
         for items in ITEMS_TO_JOIN {
             let result = humanizer.join(items);
@@ -282,8 +280,7 @@ mod tests {
         const SEED: u64 = 547845;
 
         // Create the model
-        let mut model =
-            Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Generate a story
         let mut story = "There was once".to_string();
@@ -297,9 +294,5 @@ mod tests {
                 .unwrap(),
         );
         println!("Generated story:\n{}", story);
-        println!(
-            "\n\nAverage tok/s: {}",
-            model.average_tokens_per_second().unwrap()
-        );
     }
 }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{chat_schema::SchemaWriteOutput, prelude::*};
+use crate::{chat::ChatCheckpoint, chat_schema::SchemaWriteOutput, prelude::*};
 
 /// Uses schema to define the structure of the input and output for chat-based interactions with a model.
 pub trait ChatWrapper {
@@ -32,6 +32,10 @@ pub trait ChatWrapper {
             output_schema.write_output(infer_iter)
         })
     }
+    /// Gets the token length of the chat's internal context
+    fn context_token_length(&self) -> usize {
+        self.chat().token_len()
+    }
 }
 
 /// A simple implementation of ChatWrapper that applies the given schemas directly without any additional logic.
@@ -44,20 +48,20 @@ pub struct SimpleChatWrapper {
 impl SimpleChatWrapper {
     /// Creates a new SimpleChatWrapper with the provided model and schemas.
     pub fn new<'a>(
-        model: &mut Model,
+        model: Model,
         infer_params: &InferParams,
         system_schema: impl Into<ChatSchema>,
         input_schema: impl Into<ChatSchema>,
         output_schema: impl Into<ChatSchema>,
         example_pairs: impl IntoIterator<Item = &'a (HashMap<String, String>, HashMap<String, String>)>,
         how_to_respond: impl Into<Vec<String>>,
-    ) -> Self {
+    ) -> (Self, ChatCheckpoint) {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
         let output_schema = output_schema.into();
         let example_messages =
             create_chat_wrapper_examples(&input_schema, &output_schema, example_pairs);
-        let chat = Chat::new(
+        let (chat, checkpoint) = Chat::new(
             model,
             system_schema.to_input_string(&HashMap::new()),
             &example_messages,
@@ -66,30 +70,24 @@ impl SimpleChatWrapper {
             None,
         );
 
-        Self {
-            chat,
-            input_schema,
-            output_schema,
-        }
+        (
+            Self {
+                chat,
+                input_schema,
+                output_schema,
+            },
+            checkpoint,
+        )
     }
 
-    /// Get the current state of the chat wrapper as a ChatState which can be used to reset the chat wrapper back to this state later if needed.
-    pub fn get_state(&self) -> ChatState {
-        let (system_prompt, chat_history, long_term_memory) = self.chat.get_state();
-        ChatState {
-            system_prompt,
-            chat_history,
-            long_term_memory,
-        }
+    /// Create a checkpoint saving the current state of the chat, which can be restored later to continue the conversation from this point.
+    pub fn create_checkpoint(&self) -> ChatCheckpoint {
+        self.chat.create_checkpoint()
     }
 
-    /// Resets the chat wrapper to a previous state captured by `get_state()`.
-    pub fn reset(&mut self, state: &ChatState) {
-        self.chat.reset(
-            &state.system_prompt,
-            state.chat_history.clone(),
-            state.long_term_memory.clone(),
-        );
+    /// Resets the chat to a previous state captured by `create_checkpoint()`.
+    pub fn reset_to_checkpoint(&mut self, checkpoint: &ChatCheckpoint) {
+        self.chat.reset_to_checkpoint(checkpoint);
     }
 }
 
@@ -109,12 +107,4 @@ impl ChatWrapper for SimpleChatWrapper {
     fn chat_mut(&mut self) -> &mut Chat {
         &mut self.chat
     }
-}
-
-/// Represents a saved state of a ChatWrapper
-#[derive(Clone)]
-pub struct ChatState {
-    pub system_prompt: String,
-    pub chat_history: Vec<ChatMessage>,
-    pub long_term_memory: Option<String>,
 }
