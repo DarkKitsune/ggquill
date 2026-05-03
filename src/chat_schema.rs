@@ -481,6 +481,19 @@ pub fn key_for_block(key: &str, end_sequences: &[&str], is_output: bool) -> Stri
     }
 }
 
+/// Helper function for generating an input key
+pub fn input_key(key: &str, end_sequence: Option<&str>) -> String {
+    let end_sequence = end_sequence.unwrap_or("");
+    key_for_block(key, &[end_sequence], false)
+}
+
+/// Helper function for generating an output key
+pub fn output_key(key: &str, begin_sequence: Option<&str>, end_sequences: &[&str]) -> String {
+    let mut key_string = begin_sequence.unwrap_or("").to_string();
+    key_string.push_str(&key_for_block(key, end_sequences, true));
+    key_string
+}
+
 /// Simply represents a block of text in the schema, which can be used to provide instructions, context, or other information to the model.
 #[derive(Clone)]
 pub struct TextBlock {

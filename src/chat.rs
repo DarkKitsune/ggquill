@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::chat_schema::ChatSchema;
+use crate::chat_schema::{ChatSchema, input_key, output_key};
 use crate::chat_wrapper::{ChatWrapper, SimpleChatWrapper};
 use crate::data::StringMap;
 use crate::model::{MAX_TOKENS, Model};
@@ -275,9 +275,9 @@ impl Chat {
         let model = self.infer_iter.clone_model();
         let system_schema = "You are a helpful assistant that summarizes text.";
         let input_schema =
-            ChatSchema::new().with_text(Some("Text to Summarize".to_string()), "<input>");
+            ChatSchema::new().with_text(Some("Text to Summarize".to_string()), input_key("input", None));
         let output_schema =
-            ChatSchema::new().with_text(Some("Summary".to_string()), "\"<\" :: summary>");
+            ChatSchema::new().with_text(Some("Summary".to_string()), output_key("summary", Some("\""), &["\""]));
         let example_pairs = [(
             // Full conversation text
             string_map! {

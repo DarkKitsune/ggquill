@@ -14,9 +14,9 @@ impl Humanizer {
         Your goal is to take a list of input strings or values separated by '|' and join them together into a string that a person can easily read and understand. \
         The final output should be a well formatted and grammatically correct string in double quotes which incorporates all of the inputs. \
         If the input values contain JSON, you should extract relevant information from the JSON and incorporate it into the final output string in a natural way.";
-        let input_schema = ChatSchema::new().with_text(Some("Inputs".to_string()), "<values>");
+        let input_schema = ChatSchema::new().with_text(Some("Inputs".to_string()), input_key("values", None));
         let output_schema =
-            ChatSchema::new().with_text(Some("Joined".to_string()), "\"<\" :: joined>");
+            ChatSchema::new().with_text(Some("Joined".to_string()), output_key("joined", Some("\""), &["\""]));
 
         // Example pairs of input contexts and expected output values for the chat wrapper
         let examples = [
