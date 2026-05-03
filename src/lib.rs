@@ -242,18 +242,17 @@ mod tests {
 
             // Infer a model response
             let message = chat.infer_message(&ChatRole::Assistant, None, &[]);
+            let mut message_content = message.content().to_string();
 
-            // Print the assistant's response if it was not empty
-            let message_content = message.content().trim();
-            if !message_content.is_empty() {
-                println!("\nAssistant:\n{}", message_content);
-            }
-
-            // If there was a tool call, execute the tool
+            // If there was a tool call, execute the tool and append the assistant's response after the tool call to message_content
             if let Some(tool_call) = message.tool_call() {
-                let tool_response = tool_call.execute(&mut chat).unwrap();
-                println!("\nTool response:\n{}", tool_response);
+                let (tool_response, response_message) = tool_call.execute(&mut chat).unwrap();
+                println!("\n[Tool response:\n{}]", serde_json::to_string_pretty(&tool_response).unwrap());
+                message_content.push_str(response_message.content());
             }
+
+            // Print the assistant's response
+            println!("\nAssistant:\n{}", message_content);
 
             // Compress the chat every other turn to test how stable it remains
             if i % 2 == 1 {

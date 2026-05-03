@@ -260,14 +260,17 @@ impl ToolCall {
     }
 
     /// Executes the tool call by calling the tool's function with the provided arguments and returns the result.
-    /// Also pushes the result to the chat history as a message from the tool.
-    pub fn execute(&self, chat: &mut Chat) -> Result<JsonValue> {
+    /// Also pushes the result to the chat history as a message from the tool and then returns the content of the next assistant response.
+    pub fn execute(&self, chat: &mut Chat) -> Result<(JsonValue, InferredMessage)> {
         let result = (self.tool.func)(self.args.clone())?;
 
         // Push the tool response to the chat history as a message from the tool
         chat.push_message(ChatMessage::new(ChatRole::Tool, serde_json::to_string_pretty(&result)?));
 
-        Ok(result)
+        // Infer the next message from the assistant after the tool call, which may contain the assistant's response to the tool call
+        let assistant_response = chat.infer_message(&ChatRole::Assistant, None, &[]);
+
+        Ok((result, assistant_response))
     }
 }
 
