@@ -482,9 +482,8 @@ pub fn key_for_block(key: &str, end_sequences: &[&str], is_output: bool) -> Stri
 }
 
 /// Helper function for generating an input key
-pub fn input_key(key: &str, end_sequence: Option<&str>) -> String {
-    let end_sequence = end_sequence.unwrap_or("");
-    key_for_block(key, &[end_sequence], false)
+pub fn input_key(key: &str) -> String {
+    key_for_block(key, &[], false)
 }
 
 /// Helper function for generating an output key

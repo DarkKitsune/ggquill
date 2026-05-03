@@ -275,9 +275,11 @@ impl Chat {
         let model = self.infer_iter.clone_model();
         let system_schema = "You are a helpful assistant that summarizes text.";
         let input_schema =
-            ChatSchema::new().with_text(Some("Text to Summarize".to_string()), input_key("input", None));
-        let output_schema =
-            ChatSchema::new().with_text(Some("Summary".to_string()), output_key("summary", Some("\""), &["\""]));
+            ChatSchema::new().with_text(Some("Text to Summarize".to_string()), input_key("input"));
+        let output_schema = ChatSchema::new().with_text(
+            Some("Summary".to_string()),
+            output_key("summary", Some("\""), &["\""]),
+        );
         let example_pairs = [(
             // Full conversation text
             string_map! {
@@ -346,7 +348,11 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
         self.long_term_memory = Some(summary.clone());
         self.chat_history = remaining_history;
 
-        println!("Chat compressed. From {} tokens to {} tokens.", old_token_len, self.token_len());
+        println!(
+            "Chat compressed. From {} tokens to {} tokens.",
+            old_token_len,
+            self.token_len()
+        );
     }
 
     /// Update the inference parameters for the chat's InferIter.

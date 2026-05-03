@@ -121,11 +121,17 @@ mod tests {
         let system_schema =
             "You are a quiz master who answers trivia questions in the provided tone.";
         let input_schema = ChatSchema::new()
-            .with_text(Some("Question".to_string()), "<input>")
-            .with_text(Some("Tone".to_string()), "Please answer in a <tone> tone.");
+            .with_text(Some("Question".to_string()), input_key("input"))
+            .with_text(Some("Tone".to_string()), input_key("tone"));
         let output_schema = ChatSchema::new()
-            .with_text(Some("Answer".to_string()), "\"<\" :: answer>")
-            .with_text(Some("Explanation".to_string()), "\"<\" :: explanation>");
+            .with_text(
+                Some("Answer".to_string()),
+                output_key("answer", Some("\""), &["\""]),
+            )
+            .with_text(
+                Some("Explanation".to_string()),
+                output_key("explanation", Some("\""), &["\""]),
+            );
 
         // Create some examples
         let examples = [
