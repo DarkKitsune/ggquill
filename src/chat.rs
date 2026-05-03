@@ -251,6 +251,8 @@ impl Chat {
     /// Compress the chat by joining the long term memory (if it exists) and the oldest half of the chat history into a single string,
     /// summarizing it using the model, creating a new context and resetting the infer_iter to it. Also replaces the old long term memory with the new summary.
     pub(crate) fn compress(&mut self) {
+        let old_token_len = self.token_len();
+
         // Get the oldest half of the chat history and join it into a single string
         let half_history_len = self.chat_history.len() / 2;
         let remaining_history = self.chat_history.split_off(half_history_len);
@@ -269,6 +271,7 @@ impl Chat {
         full_memory.push_str(&history_string);
 
         // Summarize the full memory string using a ChatWrapper.
+        // We create a ChatWrapper on the fly here so we don't need to store it, because compression should be a relatively rare event anyway
         let model = self.infer_iter.clone_model();
         let system_schema = "You are a helpful assistant that summarizes text.";
         let input_schema =
@@ -308,8 +311,8 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
             &example_pairs,
             [
                 "Summarize the provided conversation in a concise way, while retaining as much **useful** information as possible.".to_string(),
-                "The summary should be wrapped in '\"' and as short as possible while being informative.".to_string(),
-                "Make sure to end the summary by mentioning the most recent message in the conversation.".to_string(),
+                "The summary should be wrapped in '\"' and as short as possible (preferably one paragraph) while being informative.".to_string(),
+                "\"assistant\" and \"user\" in the conversation should be referred to as \"you\" and \"the user\" respectively in the summary.".to_string(),
             ]
         ).0;
         let summary = summarizer
@@ -343,7 +346,7 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
         self.long_term_memory = Some(summary.clone());
         self.chat_history = remaining_history;
 
-        println!("Chat compressed. New token length: {}", self.token_len());
+        println!("Chat compressed. From {} tokens to {} tokens.", old_token_len, self.token_len());
     }
 
     /// Update the inference parameters for the chat's InferIter.
