@@ -244,6 +244,11 @@ mod tests {
             let message = chat.infer_message(&ChatRole::Assistant, None, &[]);
             let mut message_content = message.content().to_string();
 
+            // If there was a malformed tool call then insert a warning before the message content
+            if message.malformed_tool_call() {
+                message_content = "[Warning: Malformed tool call]\n\n".to_string() + &message_content;
+            }
+
             // If there was a tool call, execute the tool and append the assistant's response after the tool call to message_content
             if let Some(tool_call) = message.tool_call() {
                 let (tool_response, response_message) = tool_call.execute(&mut chat).unwrap();

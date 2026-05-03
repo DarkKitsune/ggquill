@@ -204,7 +204,7 @@ impl Model {
             *avg_tokens_per_second = Some((tokens_per_second, 1));
         }
         println!(
-            "Generated {} tokens in {:.2} seconds (Avg: {:.2} tokens/sec)",
+            "\nGenerated {} tokens in {:.2} seconds (Avg: {:.2} tokens/sec)\n",
             tokens_generated,
             seconds,
             avg_tokens_per_second.unwrap().0

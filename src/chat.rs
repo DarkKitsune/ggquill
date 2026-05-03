@@ -278,6 +278,7 @@ impl ToolCall {
 pub struct InferredMessage {
     content: String,
     tool_call: Option<ToolCall>,
+    malformed_tool_call: bool,
 }
 
 impl InferredMessage {
@@ -289,6 +290,11 @@ impl InferredMessage {
     /// Returns the tool call of the inferred message, if any.
     pub fn tool_call(&self) -> Option<&ToolCall> {
         self.tool_call.as_ref()
+    }
+
+    /// Returns whether the inferred message contained a malformed tool call (i.e. it had a <tool_call> tag but we failed to parse the JSON inside it).
+    pub fn malformed_tool_call(&self) -> bool {
+        self.malformed_tool_call
     }
 }
 
@@ -463,10 +469,12 @@ impl Chat {
         self.infer_iter
             .push_str(self.model_type.create_chat_message_end_prompt());
 
-        // Retrieve tool calls from the response (while also removing them from response_result)
+        // Retrieve tool call from the response (while also removing them from response_result)
         let mut response_result = response_result;
         let mut tool_call = None;
+        let mut found_tool_call = false; // If this is true but tool_call is still None after the loop, then there was a problem parsing the tool call JSON
         while let Some(tool_call_start) = response_result.find("<tool_call>") {
+            found_tool_call = true;
             if let Some(tool_call_end) = response_result.find("</tool_call>") {
                 let tool_call_str = &response_result[tool_call_start + "<tool_call>".len()..tool_call_end];
                 // Parse the tool call JSON
@@ -492,9 +500,13 @@ impl Chat {
                 // Remove the tool call from the response result
                 response_result.replace_range(tool_call_start..tool_call_end + "</tool_call>".len(), "");
             } else {
-                break; // If there is a start tag without an end tag, we stop looking for more tool calls
+                println!("Found <tool_call> tag but no </tool_call> tag in response");
+                // No ending tag so just remove the starting tag and everything after it, since it's probably incomplete if we haven't gotten the end tag yet
+                response_result.replace_range(tool_call_start.., "");
+                break;
             }
         }
+        let malformed_tool_call = found_tool_call && tool_call.is_none();
 
         // Add the inferred response to the chat history as a new message
         let message = ChatMessage::new(sender.clone(), response_result.clone());
@@ -503,6 +515,7 @@ impl Chat {
             InferredMessage {
                 content: response_result,
                 tool_call,
+                malformed_tool_call,
             },
             after_response_result,
         ))
@@ -668,7 +681,7 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
         self.chat_history = remaining_history;
 
         println!(
-            "Chat compressed. From {} tokens to {} tokens.",
+            "\n(Chat compressed. From {} tokens to {} tokens.)\n",
             old_token_len,
             self.token_len()
         );
