@@ -76,7 +76,6 @@ impl Humanizer {
             output_schema,
             &examples,
             vec![],
-            [],
         )
         .0;
 

@@ -163,7 +163,6 @@ mod tests {
             output_schema,
             &examples,
             vec!["Answer concisely and accurately in the provided tone.".to_string()],
-            []
         )
         .0;
 

@@ -646,7 +646,6 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
                 "The summary should be wrapped in '\"' and as short as possible (preferably one paragraph) while being informative.".to_string(),
                 "\"assistant\" and \"user\" in the conversation should be referred to as \"you\" and \"the user\" respectively in the summary.".to_string(),
             ],
-            []
         ).0;
         let summary = summarizer
             .get_output(&string_map! {

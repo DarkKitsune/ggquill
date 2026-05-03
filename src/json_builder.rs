@@ -391,7 +391,6 @@ r#"{
                 "Ensure that the JSON is well-formed and only includes relevant fields based on the instructions. \
                 Be creative where appropriate, yet accurate.".to_string(),
             ],
-            []
         ).0;
 
         Self { chat_wrapper }
