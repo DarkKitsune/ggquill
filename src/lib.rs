@@ -17,10 +17,7 @@ mod tests {
 
     use anyhow::Result;
 
-    use crate::{
-        chat_wrapper::{ChatWrapper, SimpleChatWrapper},
-        prelude::*,
-    };
+    use crate::prelude::*;
 
     #[test]
     fn json_builder() {
@@ -166,6 +163,7 @@ mod tests {
             output_schema,
             &examples,
             vec!["Answer concisely and accurately in the provided tone.".to_string()],
+            []
         )
         .0;
 
@@ -191,13 +189,31 @@ mod tests {
         // Create the model
         let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
+        // Define tools
+        let tools = vec![
+            Tool::new(
+                "list_files",
+                "Lists the files in a directory.",
+                [ParameterDefinition::new("directory", "The directory to list the files of.", ParameterType::String, None)],
+                |args| {
+                    let directory = args["directory"].as_str().unwrap();
+                    let files = std::fs::read_dir(directory)
+                        .unwrap()
+                        .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Ok(JsonValue::String(files))
+                },
+            ),
+        ];
+
         // Start a chat
         let mut chat = Chat::new(
             model,
             "You are a helpful assistant and friendly person who has a great imagination, \
             an open mind, and is fun to talk to.",
             &[],
-            &InferParams::new_creative(),
+            &InferParams::new_balanced(),
             vec![
                 "Be friendly and engaging in your responses.".to_string(),
                 "Use your imagination to make the conversation more interesting.".to_string(),
@@ -206,6 +222,7 @@ mod tests {
                 "your name" => "Quill",
                 "the user's name" => "User",
             }),
+            tools,
         )
         .0;
 
@@ -213,18 +230,30 @@ mod tests {
         for i in 0..CONVERSATION_TURNS {
             // Get the user message from the console input
             let mut input = String::new();
-            print!("User: ");
+            print!("\nUser:\n");
             std::io::stdout().flush().unwrap();
             std::io::stdin().read_line(&mut input).unwrap();
             let input = input.trim().to_string();
 
-            // Push the user message to the chat history
-            chat.push_message(ChatMessage::new(ChatRole::User, input));
+            // Push the user message to the chat history if it was not empty
+            if !input.is_empty() {
+                chat.push_message(ChatMessage::new(ChatRole::User, input));
+            }
 
             // Infer a model response
             let message = chat.infer_message(&ChatRole::Assistant, None, &[]);
 
-            println!("\n\n\nAssistant: {}\n\n\n", message);
+            // Print the assistant's response if it was not empty
+            let message_content = message.content().trim();
+            if !message_content.is_empty() {
+                println!("\nAssistant:\n{}", message_content);
+            }
+
+            // If there was a tool call, execute the tool
+            if let Some(tool_call) = message.tool_call() {
+                let tool_response = tool_call.execute(&mut chat).unwrap();
+                println!("\nTool response:\n{}", tool_response);
+            }
 
             // Compress the chat every other turn to test how stable it remains
             if i % 2 == 1 {

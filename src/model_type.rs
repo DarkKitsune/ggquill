@@ -8,7 +8,7 @@ use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3
 use candle_transformers::models::qwen3::ModelForCausalLM as Qwen3;
 use hf_hub::api::sync::Api;
 
-use crate::chat::{ChatMessage, ChatRole};
+use crate::chat::{ChatMessage, ChatRole, Tool};
 use crate::data::StringMap;
 use crate::model::{DynConfig, ModelPipeline};
 
@@ -154,13 +154,14 @@ impl ModelType {
         }
     }
 
-    /// Creates a chat prompt meant for this type of Phi model.
+    /// Creates a chat prompt meant for this type of model.
     pub fn create_chat_prompt(
         &self,
         chat_system_prompt: impl AsRef<str>,
         chat_history: &[ChatMessage],
         how_to_respond: &[&str],
         extra_data: Option<&StringMap>,
+        tools: &[Tool],
     ) -> String {
         let mut prompt = String::new();
 
@@ -172,7 +173,7 @@ impl ModelType {
 
         // If there are instructions for how to respond, then we add them to the system prompt as a bullet list in a <how_to_respond> block
         if !how_to_respond.is_empty() {
-            prompt.push_str("\n# How you should respond:\n<how_to_respond>\n");
+            prompt.push_str("---\n# How you should respond:\n<how_to_respond>\n");
             for instruction in how_to_respond {
                 // Replace newlines in the instruction with spaces so that it doesn't break the formatting of the bullet points
                 let instruction = instruction.replace("\n", " ");
@@ -185,7 +186,7 @@ impl ModelType {
 
         // If there is extra data to provide to the model, then we add it to the system prompt in a <knowledge> block
         if let Some(extra_data) = extra_data {
-            prompt.push_str("\n# What you know:\n<knowledge>\n");
+            prompt.push_str("---\n# What you know:\n<knowledge>\n");
 
             // Add each key-value pair in the extra data with formatting as a bullet list
             for (key, value) in extra_data {
@@ -204,6 +205,30 @@ impl ModelType {
 
             // End the knowledge block
             prompt.push_str("</knowledge>\n");
+        }
+
+        // If tools are provided, then we add them to the system prompt in a <tools> block
+        if !tools.is_empty() {
+            // Start the tools block with a header
+            prompt.push_str("---\n# Tools\nYou have access to the following tools:\n<tools>\n");
+            // Present the tool JSON schemas to the model as a JSON array
+            let tools_vec = tools
+                .iter()
+                .map(Tool::to_json_schema)
+                .collect::<Vec<_>>();
+            let tools_json = serde_json::to_string_pretty(&tools_vec).unwrap();
+            prompt.push_str(&tools_json);
+            println!("Tools JSON:\n{}\n", tools_json);
+            // End the tools block
+            prompt.push_str("\n</tools>\n");
+            
+            // Instruct the model on how to format a tool call
+            prompt.push_str("When calling a tool, you must **only** use the following format: ```\n\
+            <tool_call>\n\
+            { \"tool\": \"tool_name\", \"args\": { ... } }\n\
+            </tool_call>\n\
+            ```\n\
+            Do not use any other format or add unnecessary text before or after the tool call.");
         }
 
         // Finally end the system section
@@ -240,6 +265,12 @@ impl ModelType {
                         message.content()
                     ));
                 }
+                ChatRole::Tool => {
+                    prompt.push_str(&format!(
+                        "<|im_start|>tool\n{}\n<|im_end|>\n",
+                        message.content()
+                    ));
+                }
                 ChatRole::Other(name) => {
                     prompt.push_str(&format!(
                         "<|im_start|>{}\n{}\n<|im_end|>\n",
@@ -254,7 +285,10 @@ impl ModelType {
     }
 
     pub fn create_chat_message_begin_prompt(&self, sender: &ChatRole) -> String {
+        // Start prompt
         let mut prompt = format!("<|im_start|>{}\n", self.chat_role_name(sender));
+
+        // Additional propmt
         match sender {
             // If this is the user and we must include the think block, then we include the /no_think command in the prompt
             ChatRole::User => {
@@ -268,7 +302,7 @@ impl ModelType {
                     prompt.push_str("<think>\n\n</think>\n");
                 }
             }
-            ChatRole::System | ChatRole::Other(_) => {}
+            _ => {}
         }
 
         prompt
@@ -287,6 +321,7 @@ impl ModelType {
             ChatRole::Assistant => "assistant",
             ChatRole::User => "user",
             ChatRole::System => "system",
+            ChatRole::Tool => "tool",
             ChatRole::Other(name) => name,
         }
     }

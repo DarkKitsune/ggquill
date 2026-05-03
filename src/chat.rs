@@ -1,8 +1,12 @@
 use std::fmt::Display;
+use std::rc::Rc;
+
+use anyhow::Result;
+use serde_json::json;
 
 use crate::chat_schema::{ChatSchema, input_key, output_key};
 use crate::chat_wrapper::{ChatWrapper, SimpleChatWrapper};
-use crate::data::StringMap;
+use crate::data::{JsonMap, JsonValue, StringMap};
 use crate::model::{MAX_TOKENS, Model};
 use crate::prelude::{InferIter, InferParams, ModelType, TokenString};
 use crate::string_map;
@@ -15,6 +19,274 @@ pub struct ChatCheckpoint {
     long_term_memory: Option<String>,
     chat_history: Vec<ChatMessage>,
     context_tokens: TokenString,
+}
+
+/// Represents a single message in a chat.
+#[derive(Clone, Debug)]
+pub struct ChatMessage {
+    sender: ChatRole,
+    content: String,
+}
+
+impl ChatMessage {
+    /// Creates a new chat message.
+    pub fn new(sender: ChatRole, content: impl Display) -> Self {
+        Self {
+            sender,
+            content: content.to_string(),
+        }
+    }
+
+    /// Creates a new chat message from the assistant.
+    pub fn assistant(content: impl Display) -> Self {
+        Self::new(ChatRole::Assistant, content)
+    }
+
+    /// Creates a new chat message from the user.
+    pub fn user(content: impl Display) -> Self {
+        Self::new(ChatRole::User, content)
+    }
+
+    /// Creates a new chat message from the system.
+    pub fn system(content: impl Display) -> Self {
+        Self::new(ChatRole::System, content)
+    }
+
+    /// Returns the sender of the message.
+    pub fn sender(&self) -> &ChatRole {
+        &self.sender
+    }
+
+    /// Returns the content of the message.
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Consumes the message and returns its content.
+    pub fn into_content(self) -> String {
+        self.content
+    }
+}
+
+impl Display for ChatMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:\n{}", self.sender, self.content)
+    }
+}
+
+/// Represents the role of a participant in a chat.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChatRole {
+    User,
+    Assistant,
+    System,
+    Tool,
+    Other(String),
+}
+
+impl Display for ChatRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChatRole::User => write!(f, "user"),
+            ChatRole::Assistant => write!(f, "assistant"),
+            ChatRole::System => write!(f, "system"),
+            ChatRole::Tool => write!(f, "tool"),
+            ChatRole::Other(name) => write!(f, "{}", name),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ParameterType {
+    String,
+    Enum(Vec<String>),
+    Number,
+    Boolean,
+}
+
+impl ParameterType {
+    pub fn string() -> Self {
+        ParameterType::String
+    }
+
+    pub fn enumeration(options: impl Into<Vec<String>>) -> Self {
+        ParameterType::Enum(options.into())
+    }
+
+    pub fn number() -> Self {
+        ParameterType::Number
+    }
+
+    pub fn boolean() -> Self {
+        ParameterType::Boolean
+    }
+
+    pub fn to_json_type_name(&self) -> &'static str {
+        match self {
+            ParameterType::String => "string",
+            ParameterType::Enum(_) => "string",
+            ParameterType::Number => "number",
+            ParameterType::Boolean => "boolean",
+        }
+    }
+}
+
+/// A single parameter definition for a tool.
+/// Contains the parameter's name, type and description, as well as a default value which also makes the parameter optional if it is Some.
+#[derive(Clone, Debug)]
+pub struct ParameterDefinition {
+    name: String,
+    param_type: ParameterType,
+    description: String,
+    default_value: Option<JsonValue>,
+}
+
+impl ParameterDefinition {
+    pub fn new(
+        name: impl Display,
+        description: impl Display,
+        param_type: ParameterType,
+        default_value: Option<JsonValue>,
+    ) -> Self {
+        // Verify that if there is a default value then it matches the parameter type
+        if let Some(default_value) = &default_value {
+            let type_matches = match &param_type {
+                ParameterType::String => default_value.is_string(),
+                ParameterType::Number => default_value.is_number(),
+                ParameterType::Boolean => default_value.is_boolean(),
+                ParameterType::Enum(options) => {
+                    if let Some(default_str) = default_value.as_str() {
+                        options.contains(&default_str.to_string())
+                    } else {
+                        false
+                    }
+                }
+            };
+            if !type_matches {
+                panic!("Default value for parameter '{}' does not match its type or allowed enum values", name);
+            }
+        }
+
+        Self {
+            name: name.to_string(),
+            param_type,
+            description: description.to_string(),
+            default_value,
+        }
+    }
+}
+
+/// Defines a tool which can be used by the chat in tool calls.
+/// The tool is defined by a name, a description and a function which takes in the tool's arguments as a StringMap and returns a String result.
+#[derive(Clone)]
+pub struct Tool {
+    name: String,
+    description: String,
+    parameters: Vec<ParameterDefinition>,
+    func: Rc<Box<dyn Fn(JsonMap) -> Result<JsonValue>>>,
+}
+
+impl Tool {
+    /// Creates a new tool definition.
+    pub fn new<R: Into<JsonValue> + 'static>(
+        name: impl Display,
+        description: impl Display,
+        parameters: impl IntoIterator<Item = ParameterDefinition>,
+        func: impl Fn(JsonMap) -> Result<R> + 'static,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            description: description.to_string(),
+            parameters: parameters.into_iter().collect(),
+            func: Rc::new(Box::new(move |args| Ok(func(args)?.into()))), // Wrap the provided function to convert its result into a JsonValue
+        }
+    }
+
+    /// Gets the name of the tool.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Creates a JSON schema representation of the tool for presenting to the model.
+    pub fn to_json_schema(&self) -> JsonValue {
+        json!({
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": self.parameters.iter().map(|param| {
+                        // Base schema for the parameter with its type and description
+                        let mut property_schema = json!({
+                            "type": param.param_type.to_json_type_name(),
+                            "description": param.description,
+                        });
+                        // If this is an enum parameter then we also add the allowed enum values to the schema
+                        if let ParameterType::Enum(options) = &param.param_type {
+                            property_schema["enum"] = json!(options);
+                        }
+                        (param.name.clone(), property_schema)
+                    }).collect::<serde_json::Map<_, _>>(),
+                    "required": self.parameters.iter().filter_map(|param| {
+                        // Only require parameters which don't have a default value
+                        if param.default_value.is_none() {
+                            Some(param.name.clone())
+                        } else {
+                            None
+                        }
+                    }).collect::<Vec<_>>(),
+                },
+            },
+        })
+    }
+}
+
+/// Represents a call to a tool from the model, containing the tool definition and the arguments for the tool call.
+pub struct ToolCall {
+    tool: Tool,
+    args: JsonMap,
+}
+
+impl ToolCall {
+    /// Gets the tool definition for this tool call.
+    pub fn tool(&self) -> &Tool {
+        &self.tool
+    }
+
+    /// Gets the arguments for this tool call.
+    pub fn args(&self) -> &JsonMap {
+        &self.args
+    }
+
+    /// Executes the tool call by calling the tool's function with the provided arguments and returns the result.
+    /// Also pushes the result to the chat history as a message from the tool.
+    pub fn execute(&self, chat: &mut Chat) -> Result<JsonValue> {
+        let result = (self.tool.func)(self.args.clone())?;
+
+        // Push the tool response to the chat history as a message from the tool
+        chat.push_message(ChatMessage::new(ChatRole::Tool, serde_json::to_string_pretty(&result)?));
+
+        Ok(result)
+    }
+}
+
+/// A single inferred message from the model, containing the content of the message as well as any other relevant information.
+pub struct InferredMessage {
+    content: String,
+    tool_call: Option<ToolCall>,
+}
+
+impl InferredMessage {
+    /// Returns the content of the inferred message.
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Returns the tool call of the inferred message, if any.
+    pub fn tool_call(&self) -> Option<&ToolCall> {
+        self.tool_call.as_ref()
+    }
 }
 
 /// Represents a chat between user and model.
@@ -30,6 +302,7 @@ pub struct Chat {
     long_term_memory: Option<String>,
     how_to_respond: Vec<String>,
     extra_data: Option<StringMap>,
+    tools: Vec<Tool>,
 }
 
 impl Chat {
@@ -41,8 +314,11 @@ impl Chat {
         infer_params: &InferParams,
         how_to_respond: impl Into<Vec<String>>,
         extra_data: Option<StringMap>,
+        tools: impl Into<Vec<Tool>>,
     ) -> (Self, ChatCheckpoint) {
         let how_to_respond = how_to_respond.into();
+        let tools = tools.into();
+
         // Create the initial context for the chat using the model's prompt template and tokenize it
         let full_prompt = model.model_type().create_chat_prompt(
             &system_prompt,
@@ -52,6 +328,7 @@ impl Chat {
                 .map(|s| s.as_str())
                 .collect::<Vec<_>>(),
             extra_data.as_ref(),
+            &tools,
         );
         let initial_context = model.tokenize(full_prompt);
 
@@ -67,6 +344,7 @@ impl Chat {
             long_term_memory: None,
             how_to_respond,
             extra_data,
+            tools,
         };
 
         let checkpoint = chat.create_checkpoint();
@@ -113,7 +391,7 @@ impl Chat {
         sender: &ChatRole,
         begin_sequence: Option<&str>,
         end_sequences: &[&str],
-    ) -> &str {
+    ) -> InferredMessage {
         self.infer_message_ext(sender, begin_sequence, end_sequences, |_, _, _| Some(()))
             .unwrap()
             .0
@@ -134,7 +412,7 @@ impl Chat {
         // allowing for further inference to be done before ending the message.
         // If the callback returns None then the message will end immediately and not be added to the chat history
         mut after_response: impl FnMut(&str, &mut InferIter, Option<&str>) -> Option<R>,
-    ) -> Option<(&str, R)> {
+    ) -> Option<(InferredMessage, R)> {
         // If the chat history is too long, we want to compress the memory.
         if self.is_context_long() {
             self.compress();
@@ -178,15 +456,51 @@ impl Chat {
             }
         };
 
-        // Reset the message buffer to just the end message prompt
+        // Push the end message prompt
         self.infer_iter
             .push_str(self.model_type.create_chat_message_end_prompt());
 
+        // Retrieve tool calls from the response (while also removing them from response_result)
+        let mut response_result = response_result;
+        let mut tool_call = None;
+        while let Some(tool_call_start) = response_result.find("<tool_call>") {
+            if let Some(tool_call_end) = response_result.find("</tool_call>") {
+                let tool_call_str = &response_result[tool_call_start + "<tool_call>".len()..tool_call_end];
+                // Parse the tool call JSON
+                if let Ok(tool_call_json) = serde_json::from_str::<JsonValue>(tool_call_str) {
+                    fn parse_tool_call(tool_call_json: &JsonValue) -> Option<(&str, JsonMap)> {
+                        let tool_name = tool_call_json.get("tool")?.as_str()?;
+                        let args = tool_call_json.get("args")?.as_object()?.clone();
+                        Some((tool_name, args))
+                    }
+
+                    if let Some((tool_name, args)) = parse_tool_call(&tool_call_json) {
+                        // Find the tool with the given name and pass up a ToolCall to it
+                        if let Some(tool) = self.tools.iter().find(|t| t.name() == tool_name) {
+                            tool_call = Some(ToolCall { tool: tool.clone(), args });
+                        } else {
+                            println!("Tool '{}' not found", tool_name);
+                        }
+                    }
+                }
+                else {
+                    println!("Failed to parse tool call JSON: {}", tool_call_str);
+                }
+                // Remove the tool call from the response result
+                response_result.replace_range(tool_call_start..tool_call_end + "</tool_call>".len(), "");
+            } else {
+                break; // If there is a start tag without an end tag, we stop looking for more tool calls
+            }
+        }
+
         // Add the inferred response to the chat history as a new message
-        let message = ChatMessage::new(sender.clone(), response_result);
+        let message = ChatMessage::new(sender.clone(), response_result.clone());
         self.chat_history.push(message);
         Some((
-            self.chat_history.last().unwrap().content(),
+            InferredMessage {
+                content: response_result,
+                tool_call,
+            },
             after_response_result,
         ))
     }
@@ -315,7 +629,8 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
                 "Summarize the provided conversation in a concise way, while retaining as much **useful** information as possible.".to_string(),
                 "The summary should be wrapped in '\"' and as short as possible (preferably one paragraph) while being informative.".to_string(),
                 "\"assistant\" and \"user\" in the conversation should be referred to as \"you\" and \"the user\" respectively in the summary.".to_string(),
-            ]
+            ],
+            []
         ).0;
         let summary = summarizer
             .get_output(&string_map! {
@@ -340,6 +655,7 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
                 .map(|s| s.as_str())
                 .collect::<Vec<_>>(),
             self.extra_data.as_ref(),
+            &self.tools,
         );
         let new_context = self.infer_iter.tokenize(full_prompt);
         self.infer_iter.reset(new_context);
@@ -363,78 +679,5 @@ I have one cat, his name is Whiskers. He's a gray tabby and he's very playful."
     /// Get all tokens that make up the chat's context so far.
     pub fn get_tokens(&self) -> TokenString {
         self.infer_iter.full_context()
-    }
-}
-
-/// Represents a single message in a chat.
-#[derive(Clone, Debug)]
-pub struct ChatMessage {
-    sender: ChatRole,
-    content: String,
-}
-
-impl ChatMessage {
-    /// Creates a new chat message.
-    pub fn new(sender: ChatRole, content: impl Display) -> Self {
-        Self {
-            sender,
-            content: content.to_string(),
-        }
-    }
-
-    /// Creates a new chat message from the assistant.
-    pub fn assistant(content: impl Display) -> Self {
-        Self::new(ChatRole::Assistant, content)
-    }
-
-    /// Creates a new chat message from the user.
-    pub fn user(content: impl Display) -> Self {
-        Self::new(ChatRole::User, content)
-    }
-
-    /// Creates a new chat message from the system.
-    pub fn system(content: impl Display) -> Self {
-        Self::new(ChatRole::System, content)
-    }
-
-    /// Returns the sender of the message.
-    pub fn sender(&self) -> &ChatRole {
-        &self.sender
-    }
-
-    /// Returns the content of the message.
-    pub fn content(&self) -> &str {
-        &self.content
-    }
-
-    /// Consumes the message and returns its content.
-    pub fn into_content(self) -> String {
-        self.content
-    }
-}
-
-impl Display for ChatMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:\n{}", self.sender, self.content)
-    }
-}
-
-/// Represents the role of a participant in a chat.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ChatRole {
-    User,
-    Assistant,
-    System,
-    Other(String),
-}
-
-impl Display for ChatRole {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ChatRole::User => write!(f, "user"),
-            ChatRole::Assistant => write!(f, "assistant"),
-            ChatRole::System => write!(f, "system"),
-            ChatRole::Other(name) => write!(f, "{}", name),
-        }
     }
 }

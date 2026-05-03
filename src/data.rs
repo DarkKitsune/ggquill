@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 pub type JsonValue = Value;
+pub type JsonMap = serde_json::Map<String, Value>;
 pub type StringMap = std::collections::HashMap<String, String>;
 
 #[macro_export]

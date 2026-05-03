@@ -55,6 +55,7 @@ impl SimpleChatWrapper {
         output_schema: impl Into<ChatSchema>,
         example_pairs: impl IntoIterator<Item = &'a (HashMap<String, String>, HashMap<String, String>)>,
         how_to_respond: impl Into<Vec<String>>,
+        tools: impl Into<Vec<Tool>>,
     ) -> (Self, ChatCheckpoint) {
         let system_schema = system_schema.into();
         let input_schema = input_schema.into();
@@ -68,6 +69,7 @@ impl SimpleChatWrapper {
             infer_params,
             how_to_respond,
             None,
+            tools,
         );
 
         (

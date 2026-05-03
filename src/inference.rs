@@ -26,8 +26,8 @@ impl InferParams {
     /// This is good for general conversation and creative tasks.
     pub fn new_creative() -> Self {
         Self {
-            temperature: 0.65,
-            repeat_penalty: 1.1,
+            temperature: 0.6,
+            repeat_penalty: 1.05,
             repeat_scan_length: 64,
         }
     }
@@ -36,7 +36,7 @@ impl InferParams {
     /// This is good for general use and is a good starting point for most tasks.
     pub fn new_balanced() -> Self {
         Self {
-            temperature: 0.45,
+            temperature: 0.4,
             repeat_penalty: 1.05,
             repeat_scan_length: 48,
         }
@@ -46,7 +46,7 @@ impl InferParams {
     /// This is good for tasks like parsing, extracting information, or code generation.
     pub fn new_logical() -> Self {
         Self {
-            temperature: 0.25,
+            temperature: 0.2,
             repeat_penalty: 1.0,
             repeat_scan_length: 0,
         }
