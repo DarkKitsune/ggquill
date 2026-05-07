@@ -160,8 +160,19 @@ impl ChatSchema {
 
     /// Add a list block to the schema with the given label, whether it is numbered, and items (separated by '|').
     /// Also returns self to allow for chaining.
-    pub fn with_list(mut self, label: Option<String>, numbered: bool, items: impl Display) -> Self {
-        self.add_block(Box::new(ListBlock::new(label, numbered, items)));
+    pub fn with_list(
+        mut self,
+        label: Option<String>,
+        description: impl Display,
+        numbered: bool,
+        items: impl Display,
+    ) -> Self {
+        self.add_block(Box::new(ListBlock::new(
+            label,
+            description,
+            numbered,
+            items,
+        )));
         self
     }
 
@@ -543,14 +554,21 @@ impl SchemaBlock for TextBlock {
 #[derive(Clone)]
 pub struct ListBlock {
     label: Option<String>,
+    description: String,
     numbered: bool,
     items: String,
 }
 
 impl ListBlock {
-    pub fn new(label: Option<String>, numbered: bool, items: impl Display) -> Self {
+    pub fn new(
+        label: Option<String>,
+        description: impl Display,
+        numbered: bool,
+        items: impl Display,
+    ) -> Self {
         Self {
             label,
+            description: description.to_string(),
             numbered,
             items: items.to_string(),
         }
@@ -572,6 +590,16 @@ impl SchemaBlock for ListBlock {
             format_label(label)
         } else {
             String::new()
+        };
+
+        // Push the description with a newline, if it is not empty
+        let description_part = if self.description.trim().is_empty() {
+            String::new()
+        } else {
+            // Substitute context keys in the description as well, since it may contain important information about the items
+            // which also needs to be updated based on the context
+            let description_substituted = substitute_context_keys(&self.description, context);
+            format!("{}\n", description_substituted)
         };
 
         // Substitute context keys in the items string
@@ -609,7 +637,7 @@ impl SchemaBlock for ListBlock {
             return None;
         }
 
-        Some(format!("{}{}", label_part, items_part))
+        Some(format!("{}{}{}", label_part, description_part, items_part))
     }
 }
 

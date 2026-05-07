@@ -8,14 +8,19 @@ pub trait ChatWrapper {
     fn infer_params(&self) -> InferParams {
         InferParams::new_balanced()
     }
+
     /// Gets the input schema for the chat wrapper, which defines the structure of the user messages.
     fn input_schema(&self) -> &ChatSchema;
+
     /// Gets the output schema for the chat wrapper, which defines the structure of the assistant messages.
     fn output_schema(&self) -> &ChatSchema;
+
     /// Gets reference to the underlying chat.
     fn chat(&self) -> &Chat;
+
     /// Gets a mutable reference to the underlying chat.
     fn chat_mut(&mut self) -> &mut Chat;
+
     /// Gets the output of the chat wrapper for the given input context, using the internal schemas.
     fn get_output(&mut self, input_context: &HashMap<String, String>) -> SchemaWriteOutput {
         let input_schema = self.input_schema().clone();
@@ -32,6 +37,7 @@ pub trait ChatWrapper {
             output_schema.write_output(infer_iter)
         })
     }
+
     /// Gets the token length of the chat's internal context
     fn context_token_length(&self) -> usize {
         self.chat().token_len()

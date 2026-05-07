@@ -1,8 +1,10 @@
 pub mod actor;
+pub mod agent;
 pub mod chat;
 pub mod chat_schema;
 pub mod chat_wrapper;
 pub mod data;
+pub mod director;
 pub mod humanizer;
 pub mod inference;
 pub mod json_builder;
@@ -10,6 +12,7 @@ pub mod model;
 pub mod model_type;
 pub mod prelude;
 pub mod token_string;
+pub mod tool_call;
 
 #[cfg(test)]
 mod tests {
@@ -100,84 +103,92 @@ mod tests {
     }
 
     #[test]
-    fn chat_wrapper() {
-        const SEED: u64 = 2125215;
-        const TRIVIA_QUESTIONS: &[(&str, &str)] = &[
-            ("What is the boiling point of water?", "humorous"),
-            (
-                "Who won the world series in 2020?",
-                "very crass and aggressive",
-            ),
-        ];
+    fn director() {
+        const SEED: u64 = 98765;
 
         // Create the model
-        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Small), SEED, true).unwrap();
 
-        // Create the schemas for the chat wrapper
-        // String slices also work as schemas
-        let system_schema =
-            "You are a quiz master who answers trivia questions in the provided tone.";
-        let input_schema = ChatSchema::new()
-            .with_text(Some("Question".to_string()), input_key("input"))
-            .with_text(Some("Tone".to_string()), input_key("tone"));
-        let output_schema = ChatSchema::new()
-            .with_text(
-                Some("Answer".to_string()),
-                output_key("answer", Some("\""), &["\""]),
-            )
-            .with_text(
-                Some("Explanation".to_string()),
-                output_key("explanation", Some("\""), &["\""]),
-            );
+        // Create a director
+        let mut director = Director::new(model);
 
-        // Create some examples
-        let examples = [
-            (
-                string_map! {
-                    "input" => "What is 2 + 2?",
-                    "tone" => "pirate-like",
-                },
-                string_map! {
-                    "answer" => "Arrr, 2 + 2 is 4.",
-                    "explanation" => "This be because when ye add two and two together, ye get four. It be basic math, matey!",
+        // Define a task for the director to create a plan for using the available tools
+        let task = "How many times does \"if\" appear in the first file starting with the letter 'm' in the current directory?";
+
+        // The list of tools
+        let tools = [
+            Tool::new(
+                "list_files",
+                "Lists the files in a directory.",
+                [ParameterDefinition::new(
+                    "directory",
+                    "The directory to list the files of.",
+                    ParameterType::String,
+                    None,
+                )],
+                |args| {
+                    let directory = args["directory"].as_str().unwrap();
+                    let files = std::fs::read_dir(directory)
+                        .unwrap()
+                        .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Ok(JsonValue::String(files))
                 },
             ),
-            (
-                string_map! {
-                    "input" => "What is the capital of Oregon?",
-                    "tone" => "straightforward and non-verbose",
+            Tool::new(
+                "read_file",
+                "Reads the content of a file.",
+                [ParameterDefinition::new(
+                    "file_path",
+                    "The path to the file to read.",
+                    ParameterType::String,
+                    None,
+                )],
+                |args| {
+                    let file_path = args["file_path"].as_str().unwrap();
+                    let content = std::fs::read_to_string(file_path).unwrap();
+                    Ok(JsonValue::String(content))
                 },
-                string_map! {
-                    "answer" => "Salem.",
-                    "explanation" => "Salem was made the capital of Oregon mainly due to its central location and accessibility.",
+            ),
+            Tool::new(
+                "count_occurrences",
+                "Counts the number of occurrences of a substring in a given string.",
+                [
+                    ParameterDefinition::new(
+                        "text",
+                        "The text to search within.",
+                        ParameterType::String,
+                        None,
+                    ),
+                    ParameterDefinition::new(
+                        "substring",
+                        "The substring to count occurrences of.",
+                        ParameterType::String,
+                        None,
+                    ),
+                ],
+                |args| {
+                    let text = args["text"].as_str().unwrap();
+                    let substring = args["substring"].as_str().unwrap();
+                    let count = text.matches(substring).count();
+                    Ok(JsonValue::Number(count.into()))
+                },
+            ),
+            Tool::new(
+                "get_current_directory",
+                "Returns the current working directory.",
+                [],
+                |_args| {
+                    let current_dir = std::env::current_dir().unwrap();
+                    Ok(JsonValue::String(current_dir.to_string_lossy().to_string()))
                 },
             ),
         ];
 
-        // Create the chat wrapper
-        let mut chat_wrapper = SimpleChatWrapper::new(
-            model,
-            &InferParams::new_balanced(),
-            system_schema,
-            input_schema,
-            output_schema,
-            &examples,
-            vec!["Answer concisely and accurately in the provided tone.".to_string()],
-        )
-        .0;
-
-        // Get the output for each trivia question and print it
-        for (question, tone) in TRIVIA_QUESTIONS {
-            let input_context = string_map! {
-                "input" => question,
-                "tone" => tone,
-            };
-            let output = chat_wrapper.get_output(&input_context).into_captures();
-            println!(
-                "Question: {}\nTone: {}\nAnswer: {}\nExplanation: {}\n\n======\n",
-                question, tone, output["answer"], output["explanation"]
-            );
-        }
+        // Have the director generate the steps needed to complete the task using the available tools
+        let steps = director.get_steps(task, &tools, None).unwrap();
+        println!("Generated steps:\n{}", steps);
     }
 
     #[test]
@@ -189,22 +200,25 @@ mod tests {
         let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
 
         // Define tools
-        let tools = vec![
-            Tool::new(
-                "list_files",
-                "Lists the files in a directory.",
-                [ParameterDefinition::new("directory", "The directory to list the files of.", ParameterType::String, None)],
-                |args| {
-                    let directory = args["directory"].as_str().unwrap();
-                    let files = std::fs::read_dir(directory)
-                        .unwrap()
-                        .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    Ok(JsonValue::String(files))
-                },
-            ),
-        ];
+        let tools = vec![Tool::new(
+            "list_files",
+            "Lists the files in a directory.",
+            [ParameterDefinition::new(
+                "directory",
+                "The directory to list the files of.",
+                ParameterType::String,
+                None,
+            )],
+            |args| {
+                let directory = args["directory"].as_str().unwrap();
+                let files = std::fs::read_dir(directory)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Ok(JsonValue::String(files))
+            },
+        )];
 
         // Start a chat
         let mut chat = Chat::new(
@@ -245,14 +259,28 @@ mod tests {
 
             // If there was a malformed tool call then insert a warning before the message content
             if message.malformed_tool_call() {
-                message_content = "[Warning: Malformed tool call]\n\n".to_string() + &message_content;
+                message_content =
+                    "[Warning: Malformed tool call]\n\n".to_string() + &message_content;
             }
 
-            // If there was a tool call, execute the tool and append the assistant's response after the tool call to message_content
-            if let Some(tool_call) = message.tool_call() {
+            // If there were tool calls, execute the tools and append the assistant's response after the tool calls to message_content
+            /*if let Some(tool_call) = message.tool_calls() {
                 let (tool_response, response_message) = tool_call.execute(&mut chat).unwrap();
                 println!("\n[Tool response:\n{}]", serde_json::to_string_pretty(&tool_response).unwrap());
                 message_content.push_str(response_message.content());
+            }*/
+            if !message.tool_calls().is_empty() {
+                for (i, tool_call) in message.tool_calls().iter().enumerate() {
+                    let (tool_response, response_message) = tool_call.execute(&mut chat).unwrap();
+                    println!(
+                        "\n[Tool response:\n{}]",
+                        serde_json::to_string_pretty(&tool_response).unwrap()
+                    );
+                    if i != 0 {
+                        message_content.push_str("\n\n");
+                    }
+                    message_content.push_str(response_message.content());
+                }
             }
 
             // Print the assistant's response

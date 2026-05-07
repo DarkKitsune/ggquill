@@ -18,7 +18,6 @@ use crate::model_type::ModelType;
 use crate::prelude::InferParams;
 use crate::token_string::{IntoTokenString, TokenString};
 
-pub const MAX_TOKENS: usize = 32768;
 pub const THINK_TEMP_MULTIPLIER: f64 = 0.85;
 
 #[derive(Clone)]
@@ -106,10 +105,6 @@ impl Model {
 
     pub fn set_seed(&mut self, seed: u64) {
         self.seed = seed;
-    }
-
-    pub fn max_tokens(&self) -> usize {
-        MAX_TOKENS
     }
 
     pub fn new_token_string(&self) -> TokenString {

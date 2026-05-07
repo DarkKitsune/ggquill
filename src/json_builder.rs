@@ -388,8 +388,8 @@ r#"{
             output_schema,
             &examples,
             vec![
-                "Ensure that the JSON is well-formed and only includes relevant fields based on the instructions. \
-                Be creative where appropriate, yet accurate.".to_string(),
+                "Ensure that the JSON is well-formed and only includes relevant fields based on the instructions.".to_string(),
+                "Be creative where appropriate, yet accurate.".to_string(),
             ],
         ).0;
 
@@ -403,7 +403,7 @@ r#"{
         &mut self,
         instructions: &str,
         template: &TemplateNode,
-        opt_input_context: Option<&HashMap<String, String>>,
+        opt_input_context: Option<&StringMap>,
         max_attempts: Option<usize>,
     ) -> Option<JsonValue> {
         // Create the input context for the chat wrapper using the provided instructions

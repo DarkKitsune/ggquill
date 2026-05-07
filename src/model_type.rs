@@ -8,9 +8,8 @@ use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3
 use candle_transformers::models::qwen3::ModelForCausalLM as Qwen3;
 use hf_hub::api::sync::Api;
 
-use crate::chat::{ChatMessage, ChatRole, Tool};
-use crate::data::StringMap;
 use crate::model::{DynConfig, ModelPipeline};
+use crate::prelude::*;
 
 /// Represents the size of model to use.
 /// This is used to determine which model files to load.
@@ -212,23 +211,22 @@ impl ModelType {
             // Start the tools block with a header
             prompt.push_str("---\n# Tools\nYou have access to the following tools:\n<tools>\n");
             // Present the tool JSON schemas to the model as a JSON array
-            let tools_vec = tools
-                .iter()
-                .map(Tool::to_json_schema)
-                .collect::<Vec<_>>();
+            let tools_vec = tools.iter().map(Tool::to_json_schema).collect::<Vec<_>>();
             let tools_json = serde_json::to_string_pretty(&tools_vec).unwrap();
             prompt.push_str(&tools_json);
             println!("Tools JSON:\n{}\n", tools_json);
             // End the tools block
             prompt.push_str("\n</tools>\n");
-            
+
             // Instruct the model on how to format a tool call
-            prompt.push_str("When calling a tool, you must **only** use the following format: ```\n\
+            prompt.push_str(
+                "When calling a tool, you must **only** use the following format: ```\n\
             <tool_call>\n\
             { \"tool\": \"tool_name\", \"args\": { ... } }\n\
             </tool_call>\n\
             ```\n\
-            Do not use any other format or add unnecessary text before or after the tool call.");
+            Do not use any other format or add unnecessary text before or after the tool call.",
+            );
         }
 
         // Finally end the system section

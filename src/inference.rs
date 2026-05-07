@@ -8,6 +8,23 @@ use crate::{
     prelude::{IntoTokenString, TokenString},
 };
 
+pub const TARGET_CONTEXT_WINDOW_HIGH: usize = 6100; // Try to aim for <1 GB VRAM usage for Qwen3-14b's KV cache
+pub const TARGET_CONTEXT_WINDOW_LOW: usize = TARGET_CONTEXT_WINDOW_HIGH / 2; // Try to aim for <500 MB VRAM usage for KV cache
+
+/// The more memory we devote to a single inference, the more stable it will be after long contexts, but the more VRAM it will use.
+/// Behind the scenes this controls the target context window size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MemoryPriority {
+    /// Devote more memory to a single inference, allowing for more stable output after long contexts, but using more VRAM.
+    /// Best for things like chat conversations, agents, or other long and complex tasks.
+    High,
+    /// Devote less memory to a single inference, which may cause the output to become less
+    /// stable after long contexts, but will use less VRAM.
+    /// Best for simple tasks such as summarizing text or generating short responses,
+    /// where a single task is unlikely to use the entire context window.
+    Low,
+}
+
 /// Parameters for inference. This is used to configure the inference process, such as the repeat penalty.
 #[derive(Debug, Clone)]
 pub struct InferParams {
@@ -19,16 +36,20 @@ pub struct InferParams {
     /// The number of last tokens to apply the repeat penalty to.
     /// 0 means no repeat penalty will be applied.
     pub repeat_scan_length: usize,
+    /// The memory priority for this InferIter, which controls how much memory is devoted to a single inference and how stable the output is after long contexts.
+    pub memory_priority: MemoryPriority,
 }
 
 impl InferParams {
     /// Returns a new InferParams with basic creative parameters set.
     /// This is good for general conversation and creative tasks.
+    /// Also uses a higher memory priority by default and so may use more VRAM, but this can be changed with `with_memory_priority`.
     pub fn new_creative() -> Self {
         Self {
             temperature: 0.6,
             repeat_penalty: 1.05,
             repeat_scan_length: 64,
+            memory_priority: MemoryPriority::High,
         }
     }
 
@@ -39,6 +60,7 @@ impl InferParams {
             temperature: 0.4,
             repeat_penalty: 1.05,
             repeat_scan_length: 48,
+            memory_priority: MemoryPriority::Low,
         }
     }
 
@@ -49,6 +71,7 @@ impl InferParams {
             temperature: 0.2,
             repeat_penalty: 1.0,
             repeat_scan_length: 0,
+            memory_priority: MemoryPriority::Low,
         }
     }
 
@@ -58,6 +81,17 @@ impl InferParams {
             temperature: 0.0,
             repeat_penalty: 1.0,
             repeat_scan_length: 0,
+            memory_priority: MemoryPriority::Low,
+        }
+    }
+
+    /// Returns the same InferParams but with the given memory priority.
+    pub fn with_memory_priority(&self, memory_priority: MemoryPriority) -> Self {
+        Self {
+            temperature: self.temperature,
+            repeat_penalty: self.repeat_penalty,
+            repeat_scan_length: self.repeat_scan_length,
+            memory_priority,
         }
     }
 }
@@ -115,6 +149,7 @@ pub struct InferIter {
     eos_token: u32,
     reached_eos: bool,
     step: usize,
+    target_context_window: usize,
 }
 
 impl InferIter {
@@ -148,6 +183,10 @@ impl InferIter {
             eos_token,
             reached_eos: false,
             pending_tokens: None,
+            target_context_window: match params.memory_priority {
+                MemoryPriority::High => TARGET_CONTEXT_WINDOW_HIGH,
+                MemoryPriority::Low => TARGET_CONTEXT_WINDOW_LOW,
+            },
             step: 0,
         }
     }
@@ -428,6 +467,12 @@ impl InferIter {
     /// This may be None if
     pub(crate) fn pending_context(&self) -> Option<&TokenString> {
         self.pending_tokens.as_ref()
+    }
+
+    /// Get the target size of the context (determined by the `Model` at the creation of this InferIter).
+    /// This is used to determine when to start truncating the context.
+    pub fn target_context_window(&self) -> usize {
+        self.target_context_window
     }
 
     /// Get a clone of the model used by this InferIter.
