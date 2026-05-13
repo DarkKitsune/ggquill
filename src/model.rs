@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
+use std::time::Instant;
 
 use anyhow::{Error as E, Result};
 
@@ -28,8 +29,8 @@ pub struct Model {
     device: Device,
     eos_token: u32,
     seed: u64,
-    // The measured average tokens per second for this model, and how many times a timing has been submitted
-    avg_tokens_per_second: Rc<RefCell<Option<(f64, usize)>>>,
+    // The measured average tokens per second for this model, as well as the last time it was updated
+    avg_tokens_per_second: Rc<RefCell<Option<(f64, Instant)>>>,
 }
 
 impl Model {
@@ -188,15 +189,22 @@ impl Model {
         self.pipeline.clear_cache();
     }
 
+    /// Returns the amount of time since the last timing was submitted for this model, in seconds. Returns None if no timing has been submitted yet.
+    pub(crate) fn time_since_last_timing(&self) -> Option<f64> {
+        self.avg_tokens_per_second
+            .borrow()
+            .map(|(_, last_updated)| last_updated.elapsed().as_secs_f64())
+    }
+
     /// Submit a timing for a generation and update the average tokens per second for this model.
     pub(crate) fn submit_timing(&self, tokens_generated: usize, seconds: f64) {
         let tokens_per_second = tokens_generated as f64 / seconds;
         let mut avg_tokens_per_second = self.avg_tokens_per_second.borrow_mut();
-        if let Some((avg, count)) = *avg_tokens_per_second {
-            let new_avg = (avg * count as f64 + tokens_per_second) / (count as f64 + 1.0);
-            *avg_tokens_per_second = Some((new_avg, count + 1));
+        if let Some((avg, _)) = *avg_tokens_per_second {
+            let new_avg = (avg + tokens_per_second) / 2.0;
+            *avg_tokens_per_second = Some((new_avg, Instant::now()));
         } else {
-            *avg_tokens_per_second = Some((tokens_per_second, 1));
+            *avg_tokens_per_second = Some((tokens_per_second, Instant::now()));
         }
         println!(
             "\nGenerated {} tokens in {:.2} seconds (Avg: {:.2} tokens/sec)\n",

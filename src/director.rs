@@ -10,7 +10,7 @@ pub struct Director {
 impl Director {
     pub fn new(model: Model) -> Self {
         let system_schema = "You are an assistant. The user gives you instructions or complex tasks in string form and your job is to \
-            breaks them down into a numbered of steps.";
+            breaks them down into a numbered list of steps.";
 
         // The input schema for the director is just a single instruction string
         let input_schema = ChatSchema::new()
@@ -106,7 +106,10 @@ impl Director {
                 },
                 // Outputs
                 string_map! {
-                    "steps" => "1. Find the current weather in New York.\n2. Get the user's email address.\n3. Email the weather information to the user tomorrow morning.",
+                    "steps" =>
+                    "1. Find the current weather in New York.\n\
+                    2. Get the user's email address.\n\
+                    3. Email the weather information to the user tomorrow morning.",
                 },
             ),
             (
@@ -117,7 +120,11 @@ impl Director {
                 },
                 // Outputs
                 string_map! {
-                    "steps" => "1. Search the internet for the best pizza places in Chicago.\n2. Search the internet for the menu of the best pizza place in Chicago.\n3. Get the user's email address.\n4. Email the menu to the user.",
+                    "steps" =>
+                    "1. Search the internet for the best pizza places in Chicago.\n\
+                    2. Search the internet for the menu of the best pizza place in Chicago.\n\
+                    3. Get the user's email address.\n\
+                    4. Email the menu to the user.",
                 },
             ),
             (
@@ -143,7 +150,7 @@ impl Director {
                 vec![
                     "Ensure that the steps are well-structured and clearly indicate the order of execution.".to_string(),
                     "Be creative where appropriate, yet accurate.".to_string(),
-                    "The steps should be provided in a numbered list.".to_string(),
+                    "Each step should be a single action that can be completed with one of the available tools, or by reasoning using the information provided.".to_string(),
                     "If the task cannot be completed with the available tools, provide an explanation of why it cannot be completed instead of steps.".to_string(),
                 ]
             ).0;
@@ -151,20 +158,20 @@ impl Director {
         Self { chat_wrapper }
     }
 
-    /// Takes in an instruction string and a list of available tools, and returns a list of steps needed to complete the task.
+    /// Takes in an instruction string and a list of available tools, and returns a vector list of steps needed to complete the task.
     pub fn get_steps(
         &mut self,
         instruction: impl Display,
         tools: &[Tool],
         opt_context: Option<&StringMap>,
-    ) -> Result<String> {
+    ) -> Result<Vec<String>> {
         // First make a vec of the tools' JSON schemas to present to the model
         let tools_schemas = tools.iter().map(Tool::to_json_schema).collect::<Vec<_>>();
 
         // Then we create the input for the chat wrapper by including the instruction and the tool schemas in the input map
         let mut input = string_map! {
-            "instruction".to_string() => instruction.to_string(),
-            "tools".to_string() => serde_json::to_string_pretty(&tools_schemas).unwrap(),
+            "instruction" => instruction.to_string().trim(),
+            "tools" => serde_json::to_string_pretty(&tools_schemas).unwrap(),
         };
 
         // We also need to include the contents of opt_context in the input, so we extend the input map with the key-value pairs from opt_context
@@ -175,6 +182,13 @@ impl Director {
         // Finally we call the chat wrapper and get the output
         let output = self.chat_wrapper.get_output(&input).into_captures();
 
-        Ok(output.get("steps").cloned().unwrap_or_default())
+        // Extract the steps from the numbered list and remove the numbers
+        let steps = output.get("steps").cloned().unwrap_or_default()
+            .lines()
+            .map(|line| line.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c.is_whitespace()).to_string())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+
+        Ok(steps)
     }
 }

@@ -41,6 +41,11 @@ impl ChatMessage {
         Self::new(ChatRole::System, content)
     }
 
+    /// Creates a new chat message from a tool.
+    pub fn tool(content: impl Display) -> Self {
+        Self::new(ChatRole::Tool, content)
+    }
+
     /// Returns the sender of the message.
     pub fn sender(&self) -> &ChatRole {
         &self.sender
@@ -112,6 +117,11 @@ impl InferredMessage {
     /// Returns whether the inferred message contained a malformed tool call (i.e. it had a <tool_call> tag but we failed to parse the JSON inside it).
     pub fn malformed_tool_call(&self) -> bool {
         self.malformed_tool_call
+    }
+
+    /// Consumes the inferred message and returns its content.
+    pub fn into_content(self) -> String {
+        self.content
     }
 }
 
@@ -225,9 +235,9 @@ impl Chat {
 
     /// Infer a new message from the model and push it to the chat history.
     /// If a begin_sequence is provided, it is treated as if it was prepended to the model's response, influencing the inference.
-    /// Returns the content of the inferred message and a mutable reference to the InferIter, allowing for further inference.
     /// The after_response callback is given the message, a mutable reference to the InferIter and the end sequence which caused the
     /// inference to end, allowing for further inference to be done before ending the message.
+    /// Returns the content of the original inferred message as well as the result of the after_response callback after the inference is done.
     pub fn infer_message_ext<R>(
         &mut self,
         sender: &ChatRole,
@@ -293,6 +303,13 @@ impl Chat {
         while let Some(tool_call_start) = response_result.find("<tool_call>") {
             found_tool_call = true;
             if let Some(tool_call_end) = response_result.find("</tool_call>") {
+                // If tool_call_end comes before tool_call_start, then we have a malformed tool call, so we break the loop and remove all text after the start of the tool call, since it's probably incomplete if we haven't gotten the end tag yet
+                if tool_call_end < tool_call_start {
+                    println!("Found </tool_call> tag before <tool_call> tag in response, indicating a malformed tool call. Ignoring tool call and removing text after <tool_call> tag.");
+                    response_result.replace_range(tool_call_start.., "");
+                    break;
+                }
+                
                 let tool_call_str =
                     &response_result[tool_call_start + "<tool_call>".len()..tool_call_end];
                 // Parse the tool call JSON

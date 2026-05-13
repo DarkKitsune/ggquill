@@ -78,8 +78,8 @@ impl SchemaWriteOutput {
     }
 
     /// Gets a specific capture by key, if it exists.
-    pub fn get_capture(&self, key: &str) -> Option<&String> {
-        self.captures.get(key)
+    pub fn get_capture(&self, key: &str) -> Option<&str> {
+        self.captures.get(key).map(|s| s.as_str())
     }
 
     /// Takes ownership of the captures and full string, returning them as a tuple.
@@ -354,6 +354,18 @@ impl From<&str> for ChatSchema {
     }
 }
 
+impl From<String> for ChatSchema {
+    fn from(s: String) -> Self {
+        ChatSchema::new().with_text(None, s)
+    }
+}
+
+impl From<&String> for ChatSchema {
+    fn from(s: &String) -> Self {
+        ChatSchema::new().with_text(None, s)
+    }
+}
+
 /// A trait representing a block of the schema. This can be implemented by different types of blocks to define their behavior and content.
 pub trait SchemaBlock {
     /// Clones the block. This is needed because the schema contains trait objects which are not clonable by default.
@@ -415,6 +427,7 @@ pub trait SchemaBlock {
         for key in keys {
             // If the key contains a capture identifier (indicated by "::"), split the key and use the part after "::" as the capture key
             // The part before "::" is used as the end sequence for inference as normal
+            // If it does not contain "::" then ignore the capture key entirely
             let key_str = key.as_str();
             let (end_sequences_str, capture_key) = if let Some(split_index) = key_str.find("::") {
                 (
@@ -422,10 +435,7 @@ pub trait SchemaBlock {
                     key_str[split_index + 2..].trim(),
                 )
             } else {
-                panic!(
-                    "Output schema keys must be in the format in the format <end|sequences|here :: capture_key_here> to capture inferred values, but key '{}' does not contain '::'",
-                    key_str
-                );
+                continue;
             };
 
             let start = key.start() - 1; // Include the opening '<'
@@ -674,10 +684,11 @@ impl SchemaBlock for JsonBlock {
             String::new()
         };
 
-        // Then start a code block and then the JSON string with an opening quote and brace
+        // Then start a code block and then the JSON string
         raw_string.push_str("```\nconst json_string = String.raw`{\n");
 
         // Add an inferable key if output, or a context key if input, using the key name
+        // {} has special behavior as an end sequence to indicate that an entire JSON object should be inferred
         raw_string.push_str(&key_for_block(&self.key_name, &["{}"], is_output));
 
         // Then end the code block

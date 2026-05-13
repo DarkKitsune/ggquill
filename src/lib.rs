@@ -1,5 +1,3 @@
-pub mod actor;
-pub mod agent;
 pub mod chat;
 pub mod chat_schema;
 pub mod chat_wrapper;
@@ -10,9 +8,11 @@ pub mod inference;
 pub mod json_builder;
 pub mod model;
 pub mod model_type;
+pub mod agent;
 pub mod prelude;
 pub mod token_string;
 pub mod tool_call;
+pub mod menu;
 
 #[cfg(test)]
 mod tests {
@@ -21,6 +21,88 @@ mod tests {
     use anyhow::Result;
 
     use crate::prelude::*;
+
+    #[test]
+    fn agent() {
+        const SEED: u64 = 98765;
+
+        // Create the model
+        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Medium), SEED, true).unwrap();
+
+        // Create a director
+        let mut director = Director::new(model.clone());
+
+        // The list of tools
+        let tools = [
+            Tool::new(
+                "list_files",
+                "Lists the files (only files, no directories) in a directory.",
+                [ParameterDefinition::new(
+                    "directory",
+                    "The directory to list the files of.",
+                    ParameterType::String,
+                    None,
+                )],
+                |args| {
+                    let directory = args["directory"].as_str().unwrap();
+                    let files = std::fs::read_dir(directory)
+                        .unwrap()
+                        .filter_map(|entry| {
+                            let entry = entry.unwrap();
+                            if entry.file_type().unwrap().is_file() {
+                                Some(entry.file_name().to_string_lossy().to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Ok(JsonValue::String(files))
+                },
+            ),
+            Tool::new(
+                "read_file",
+                "Reads the content of a file.",
+                [ParameterDefinition::new(
+                    "file_path",
+                    "The path to the file to read.",
+                    ParameterType::String,
+                    None,
+                )],
+                |args| {
+                    let file_path = args["file_path"].as_str().unwrap();
+                    let content = std::fs::read_to_string(file_path).unwrap();
+                    Ok(JsonValue::String(content))
+                },
+            ),
+            Tool::new(
+                "get_current_directory",
+                "Returns the current working directory.",
+                [],
+                |_args| {
+                    let current_dir = std::env::current_dir().unwrap();
+                    Ok(JsonValue::String(current_dir.to_string_lossy().to_string()))
+                },
+            ),
+        ];
+
+        // Define a task for the director to create a plan for using the available tools
+        let tasks = [
+            "What is the purpose of the struct defined in the .rs source file which rhymes with \"bloomanizer\" in the \"src\" subdirectory of the current directory?",
+            "What dependencies are in my cargo.toml file which should be under the current directory?",
+        ];
+
+        for task in tasks {
+            // Have the director generate the steps needed to complete the task using the available tools
+            let steps = director.get_steps(task, &tools, None).unwrap();
+            println!("Generated steps:\n{:#?}", steps);
+
+            // Then execute the steps
+            let mut agent: Agent = Agent::new(model.clone(), task, steps, &tools);
+            let summary = agent.execute(false);
+            println!("\nFinal summary:\n{}\n----\n", summary);
+        }
+    }
 
     #[test]
     fn json_builder() {
@@ -103,95 +185,6 @@ mod tests {
     }
 
     #[test]
-    fn director() {
-        const SEED: u64 = 98765;
-
-        // Create the model
-        let model = Model::new(ModelType::Qwen3Instruct(ModelSize::Small), SEED, true).unwrap();
-
-        // Create a director
-        let mut director = Director::new(model);
-
-        // Define a task for the director to create a plan for using the available tools
-        let task = "How many times does \"if\" appear in the first file starting with the letter 'm' in the current directory?";
-
-        // The list of tools
-        let tools = [
-            Tool::new(
-                "list_files",
-                "Lists the files in a directory.",
-                [ParameterDefinition::new(
-                    "directory",
-                    "The directory to list the files of.",
-                    ParameterType::String,
-                    None,
-                )],
-                |args| {
-                    let directory = args["directory"].as_str().unwrap();
-                    let files = std::fs::read_dir(directory)
-                        .unwrap()
-                        .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    Ok(JsonValue::String(files))
-                },
-            ),
-            Tool::new(
-                "read_file",
-                "Reads the content of a file.",
-                [ParameterDefinition::new(
-                    "file_path",
-                    "The path to the file to read.",
-                    ParameterType::String,
-                    None,
-                )],
-                |args| {
-                    let file_path = args["file_path"].as_str().unwrap();
-                    let content = std::fs::read_to_string(file_path).unwrap();
-                    Ok(JsonValue::String(content))
-                },
-            ),
-            Tool::new(
-                "count_occurrences",
-                "Counts the number of occurrences of a substring in a given string.",
-                [
-                    ParameterDefinition::new(
-                        "text",
-                        "The text to search within.",
-                        ParameterType::String,
-                        None,
-                    ),
-                    ParameterDefinition::new(
-                        "substring",
-                        "The substring to count occurrences of.",
-                        ParameterType::String,
-                        None,
-                    ),
-                ],
-                |args| {
-                    let text = args["text"].as_str().unwrap();
-                    let substring = args["substring"].as_str().unwrap();
-                    let count = text.matches(substring).count();
-                    Ok(JsonValue::Number(count.into()))
-                },
-            ),
-            Tool::new(
-                "get_current_directory",
-                "Returns the current working directory.",
-                [],
-                |_args| {
-                    let current_dir = std::env::current_dir().unwrap();
-                    Ok(JsonValue::String(current_dir.to_string_lossy().to_string()))
-                },
-            ),
-        ];
-
-        // Have the director generate the steps needed to complete the task using the available tools
-        let steps = director.get_steps(task, &tools, None).unwrap();
-        println!("Generated steps:\n{}", steps);
-    }
-
-    #[test]
     fn chat() {
         const SEED: u64 = 477474;
         const CONVERSATION_TURNS: usize = 14;
@@ -271,7 +264,7 @@ mod tests {
             }*/
             if !message.tool_calls().is_empty() {
                 for (i, tool_call) in message.tool_calls().iter().enumerate() {
-                    let (tool_response, response_message) = tool_call.execute(&mut chat).unwrap();
+                    let (tool_response, response_message) = tool_call.execute(&mut chat, &[]).unwrap();
                     println!(
                         "\n[Tool response:\n{}]",
                         serde_json::to_string_pretty(&tool_response).unwrap()

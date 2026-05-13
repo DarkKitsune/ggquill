@@ -16,13 +16,13 @@ use crate::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelSize {
     /// A super lightweight model.
-    /// Usually around 0 - 7B parameters.
+    /// Usually around 0 - 6B parameters.
     Small,
     /// A medium-weight model balanced between speed and power.
-    /// Usually around 8B - 15B parameters.
+    /// Usually around 7B - 12B parameters.
     Medium,
     /// A heavyweight model sacrificing efficiency for power.
-    /// Usually around 16B+ parameters.
+    /// Usually around 13B+ parameters.
     Large,
 }
 
@@ -71,7 +71,7 @@ impl ModelType {
                     ModelRepo::hub("DarkKitsune/qwen3-4b-instruct-special-Q4_K_M-GGUF")
                 }
                 ModelSize::Medium => {
-                    ModelRepo::hub("mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF")
+                    ModelRepo::hub("DarkKitsune/qwen3-8b-full-sft-prm-r2egym-instructions-k10-opus-distill-32k-lr5e6-flattened-Q4_K_M-GGUF")
                 }
                 ModelSize::Large => {
                     unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size)
@@ -90,7 +90,7 @@ impl ModelType {
         match self {
             ModelType::Qwen3Instruct(model_size) => match model_size {
                 ModelSize::Small => &["qwen3-4b-instruct-special-q4_k_m-imat.gguf"],
-                ModelSize::Medium => &["Ophiuchi-Qwen3-14B-Instruct.i1-Q3_K_S.gguf"],
+                ModelSize::Medium => &["qwen3-8b-full-sft-prm-r2egym-instructions-k10-opus-distill-32k-lr5e6-flattened-q4_k_m-imat.gguf"],
                 ModelSize::Large => {
                     unimplemented!("No Qwen3 Instruct model available in {:?} yet", model_size)
                 }

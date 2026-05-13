@@ -8,8 +8,9 @@ use crate::{
     prelude::{IntoTokenString, TokenString},
 };
 
-pub const TARGET_CONTEXT_WINDOW_HIGH: usize = 6100; // Try to aim for <1 GB VRAM usage for Qwen3-14b's KV cache
-pub const TARGET_CONTEXT_WINDOW_LOW: usize = TARGET_CONTEXT_WINDOW_HIGH / 2; // Try to aim for <500 MB VRAM usage for KV cache
+pub const TARGET_CONTEXT_WINDOW_HIGH: usize = 4850; // Try to aim for <2/3GB VRAM usage for Qwen3-8b's KV cache
+pub const TARGET_CONTEXT_WINDOW_LOW: usize = TARGET_CONTEXT_WINDOW_HIGH / 2; // Try to aim for <1/3GB VRAM usage for KV cache
+const TPS_MEASUREMENT_INTERVAL: f64 = 5.0; // Measure tokens per second every 5 seconds
 
 /// The more memory we devote to a single inference, the more stable it will be after long contexts, but the more VRAM it will use.
 /// Behind the scenes this controls the target context window size.
@@ -306,10 +307,13 @@ impl InferIter {
                 response.truncate(pos);
 
                 let elapsed = time.elapsed().as_secs_f64();
-                self.tokens
+                let model = self.tokens
                     .model
-                    .borrow()
-                    .submit_timing(tokens_generated, elapsed);
+                    .borrow();
+                if let Some(time_since_last) = model.time_since_last_timing() && time_since_last > TPS_MEASUREMENT_INTERVAL {
+                    model
+                        .submit_timing(tokens_generated, elapsed);
+                }
 
                 return InferCompletion {
                     text: response,
@@ -319,10 +323,13 @@ impl InferIter {
         }
 
         let elapsed = time.elapsed().as_secs_f64();
-        self.tokens
+        let model = self.tokens
             .model
-            .borrow()
-            .submit_timing(tokens_generated, elapsed);
+            .borrow();
+        if let Some(time_since_last) = model.time_since_last_timing() && time_since_last > TPS_MEASUREMENT_INTERVAL {
+            model
+                .submit_timing(tokens_generated, elapsed);
+        }
 
         InferCompletion {
             text: response,

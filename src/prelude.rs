@@ -1,4 +1,4 @@
-pub use crate::actor::Actor;
+pub use crate::agent::*;
 pub use crate::chat::*;
 pub use crate::chat_schema::*;
 pub use crate::chat_wrapper::{ChatWrapper, SimpleChatWrapper};
