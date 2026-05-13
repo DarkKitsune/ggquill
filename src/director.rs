@@ -183,9 +183,18 @@ impl Director {
         let output = self.chat_wrapper.get_output(&input).into_captures();
 
         // Extract the steps from the numbered list and remove the numbers
-        let steps = output.get("steps").cloned().unwrap_or_default()
+        let steps = output
+            .get("steps")
+            .cloned()
+            .unwrap_or_default()
             .lines()
-            .map(|line| line.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c.is_whitespace()).to_string())
+            .map(|line| {
+                line.trim()
+                    .trim_start_matches(|c: char| {
+                        c.is_ascii_digit() || c == '.' || c.is_whitespace()
+                    })
+                    .to_string()
+            })
             .filter(|line| !line.is_empty())
             .collect::<Vec<_>>();
 

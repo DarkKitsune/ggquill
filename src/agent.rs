@@ -28,7 +28,12 @@ pub struct Agent {
 
 impl Agent {
     /// Creates a new agent with the given task and model.
-    pub fn new(model: Model, task: impl Display, task_steps: impl IntoIterator<Item = impl Display>, tools: impl Into<Vec<Tool>>) -> Self {
+    pub fn new(
+        model: Model,
+        task: impl Display,
+        task_steps: impl IntoIterator<Item = impl Display>,
+        tools: impl Into<Vec<Tool>>,
+    ) -> Self {
         let tools = tools.into();
         let tools_schemas = tools.iter().map(Tool::to_json_schema).collect::<Vec<_>>();
         let task_steps: Vec<String> = task_steps.into_iter().map(|s| s.to_string()).collect();
@@ -87,7 +92,12 @@ If it is a tool call then your response should only be that tool call in the cor
             [],
         ).0;
 
-        Self { task: task.to_string(), task_steps, tools, chat }
+        Self {
+            task: task.to_string(),
+            task_steps,
+            tools,
+            chat,
+        }
     }
 
     /// Pops the next step from the beginning of the list of steps and executes it with the agent.
@@ -102,13 +112,15 @@ If it is a tool call then your response should only be that tool call in the cor
         // If there are no more steps to execute, return None, otherwise remove the 0th step and execute it
         let next_step = if self.task_steps.is_empty() {
             return None;
-        }
-        else {
+        } else {
             self.task_steps.remove(0)
         };
 
         // Using the chat, ask the model to determine if the next step is a tool call or an reasoning step, and execute it accordingly
-        let user_message = format!("# Next Step\n{}\n\nIs this a tool call or an reasoning step?", next_step);
+        let user_message = format!(
+            "# Next Step\n{}\n\nIs this a tool call or an reasoning step?",
+            next_step
+        );
         self.chat.push_message(ChatMessage::user(&user_message));
 
         // Infer the assistant's response to determine if it is a tool call or an reasoning step
@@ -133,20 +145,20 @@ If it is a tool call then your response should only be that tool call in the cor
                         let tool_call_str = infer_iter.complete(&["```"]).trim().to_string();
 
                         // Create a ToolCall
-                        let tool_call_json: JsonValue = serde_json::from_str(&tool_call_str).ok()?;
+                        let tool_call_json: JsonValue =
+                            serde_json::from_str(&tool_call_str).ok()?;
                         let (tool_name, args) = parse_tool_call(&tool_call_json)?;
                         let tool = self.tools.iter().find(|t| t.name() == tool_name)?;
                         let tool_call = ToolCall::new(tool.clone(), args);
                         Some(AgentResponse::ToolCall(tool_call))
-                    }
-                    else {
+                    } else {
                         // This is an reasoning step, so we infer the reasoning
                         infer_iter.push_str("# Reasoning/Response For This Step\n<reasoning>");
                         let reasoning = infer_iter.complete(&["</reasoning>"]).trim().to_string();
 
                         Some(AgentResponse::Reasoning(reasoning))
                     }
-                }
+                },
             );
 
             // If we couldn't get a valid response then roll back the chat to the checkpoint and try again
@@ -160,9 +172,11 @@ If it is a tool call then your response should only be that tool call in the cor
         // If this is a tool call then execute the tool call and get the assistant response for that
         let (assistant_response, tool_response) = match assistant_response {
             AgentResponse::ToolCall(tool_call) => {
-                let (tool_result, tool_assistant_response) = tool_call.execute(&mut self.chat, &["Next Step", "Next step"]).unwrap();
+                let (tool_result, tool_assistant_response) = tool_call
+                    .execute(&mut self.chat, &["Next Step", "Next step"])
+                    .unwrap();
                 (tool_assistant_response.into_content(), Some(tool_result))
-            },
+            }
             AgentResponse::Reasoning(reasoning) => (reasoning, None),
         };
 
@@ -173,7 +187,10 @@ If it is a tool call then your response should only be that tool call in the cor
     pub fn execute(&mut self, with_logging: bool) -> String {
         while let Some((next_step, assistant_response, tool_response)) = self.execute_next_step() {
             if with_logging {
-                println!("Step: {}\nResponse: {}\nTool Response: {:?}\n", next_step, assistant_response, tool_response);
+                println!(
+                    "Step: {}\nResponse: {}\nTool Response: {:?}\n",
+                    next_step, assistant_response, tool_response
+                );
             }
         }
 
@@ -185,7 +202,14 @@ If it is a tool call then your response should only be that tool call in the cor
         ));
 
         // Infer the assistant's final summary
-        let final_summary = self.chat.infer_message(&ChatRole::Assistant, Some("# Task Summary and Important Information\n```\n"), &["```"]).into_content();
+        let final_summary = self
+            .chat
+            .infer_message(
+                &ChatRole::Assistant,
+                Some("# Task Summary and Important Information\n```\n"),
+                &["```"],
+            )
+            .into_content();
         final_summary
     }
 }

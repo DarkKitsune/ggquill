@@ -305,11 +305,13 @@ impl Chat {
             if let Some(tool_call_end) = response_result.find("</tool_call>") {
                 // If tool_call_end comes before tool_call_start, then we have a malformed tool call, so we break the loop and remove all text after the start of the tool call, since it's probably incomplete if we haven't gotten the end tag yet
                 if tool_call_end < tool_call_start {
-                    println!("Found </tool_call> tag before <tool_call> tag in response, indicating a malformed tool call. Ignoring tool call and removing text after <tool_call> tag.");
+                    println!(
+                        "Found </tool_call> tag before <tool_call> tag in response, indicating a malformed tool call. Ignoring tool call and removing text after <tool_call> tag."
+                    );
                     response_result.replace_range(tool_call_start.., "");
                     break;
                 }
-                
+
                 let tool_call_str =
                     &response_result[tool_call_start + "<tool_call>".len()..tool_call_end];
                 // Parse the tool call JSON

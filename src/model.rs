@@ -20,6 +20,8 @@ use crate::prelude::InferParams;
 use crate::token_string::{IntoTokenString, TokenString};
 
 pub const THINK_TEMP_MULTIPLIER: f64 = 0.85;
+const TPS_MEASUREMENT_INTERVAL: f64 = 4.0; // Measure tokens per second every n seconds
+const TPS_MEASUREMENT_THRESHOLD: usize = 8; // Minimum number of tokens generated before we consider submitting a timing for TPS measurement
 
 #[derive(Clone)]
 pub struct Model {
@@ -198,6 +200,19 @@ impl Model {
 
     /// Submit a timing for a generation and update the average tokens per second for this model.
     pub(crate) fn submit_timing(&self, tokens_generated: usize, seconds: f64) {
+        // Exit early if we haven't generated enough tokens to consider this timing for TPS measurement, to avoid skewing the average with outliers
+        if tokens_generated < TPS_MEASUREMENT_THRESHOLD {
+            return;
+        }
+
+        // Exit early if we submitted a timing recently
+        if let Some(time_since_last) = self.time_since_last_timing()
+            && time_since_last < TPS_MEASUREMENT_INTERVAL
+        {
+            // If the last timing was submitted recently then we skip this timing to avoid skewing the average with outliers
+            return;
+        }
+
         let tokens_per_second = tokens_generated as f64 / seconds;
         let mut avg_tokens_per_second = self.avg_tokens_per_second.borrow_mut();
         if let Some((avg, _)) = *avg_tokens_per_second {

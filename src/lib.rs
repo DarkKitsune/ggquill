@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod chat;
 pub mod chat_schema;
 pub mod chat_wrapper;
@@ -6,13 +7,12 @@ pub mod director;
 pub mod humanizer;
 pub mod inference;
 pub mod json_builder;
+pub mod menu;
 pub mod model;
 pub mod model_type;
-pub mod agent;
 pub mod prelude;
 pub mod token_string;
 pub mod tool_call;
-pub mod menu;
 
 #[cfg(test)]
 mod tests {
@@ -264,7 +264,8 @@ mod tests {
             }*/
             if !message.tool_calls().is_empty() {
                 for (i, tool_call) in message.tool_calls().iter().enumerate() {
-                    let (tool_response, response_message) = tool_call.execute(&mut chat, &[]).unwrap();
+                    let (tool_response, response_message) =
+                        tool_call.execute(&mut chat, &[]).unwrap();
                     println!(
                         "\n[Tool response:\n{}]",
                         serde_json::to_string_pretty(&tool_response).unwrap()

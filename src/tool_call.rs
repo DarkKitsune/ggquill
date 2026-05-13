@@ -178,7 +178,11 @@ impl ToolCall {
 
     /// Executes the tool call by calling the tool's function with the provided arguments and returns the result.
     /// Also pushes the result to the chat history as a message from the tool and then returns the content of the next assistant response.
-    pub fn execute(&self, chat: &mut Chat, response_end_sequences: &[&str]) -> Result<(JsonValue, InferredMessage)> {
+    pub fn execute(
+        &self,
+        chat: &mut Chat,
+        response_end_sequences: &[&str],
+    ) -> Result<(JsonValue, InferredMessage)> {
         let result = (self.tool.func)(&self.args)?;
 
         // Push the tool response to the chat history as a message from the tool
@@ -188,7 +192,11 @@ impl ToolCall {
         ));
 
         // Infer the next message from the assistant after the tool call, which may contain the assistant's response to the tool call
-        let assistant_response = chat.infer_message(&ChatRole::Assistant, Some("# Tool Result\n"), response_end_sequences);
+        let assistant_response = chat.infer_message(
+            &ChatRole::Assistant,
+            Some("# Tool Result\n"),
+            response_end_sequences,
+        );
 
         Ok((result, assistant_response))
     }
@@ -213,28 +221,36 @@ impl ToolCall {
     /// {"tool": "get_user_email", "args": {}}
     /// {"tool": "send_email", "args": {"recipient": "user@example.com", "subject": "Weather Update", "body": "The weather in New York is sunny.", "hour": 9, "minute": 0}}
     /// ```
-    pub fn parse_tool_calls_from_string(s: &str, available_tools: &[Tool]) -> Result<Vec<ToolCall>> {
+    pub fn parse_tool_calls_from_string(
+        s: &str,
+        available_tools: &[Tool],
+    ) -> Result<Vec<ToolCall>> {
         let mut tool_calls = Vec::new();
         for line in s.lines() {
             let tool_call_json: JsonValue = serde_json::from_str(line)?;
             let tool_name = tool_call_json
                 .get("tool")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow!("Tool call is missing 'tool' field or it is not a string"))?;
+                .ok_or_else(|| {
+                    anyhow!("Tool call is missing 'tool' field or it is not a string")
+                })?;
             let args = tool_call_json
                 .get("args")
                 .and_then(|v| v.as_object())
-                .ok_or_else(|| anyhow!("Tool call is missing 'args' field or it is not an object"))?;
+                .ok_or_else(|| {
+                    anyhow!("Tool call is missing 'args' field or it is not an object")
+                })?;
 
             // Find the tool definition for the given tool name from the list of available tools
             let tool = available_tools
                 .iter()
                 .find(|t| t.name() == tool_name)
-                .ok_or_else(|| anyhow!("Tool '{}' is not in the list of available tools", tool_name))?;
+                .ok_or_else(|| {
+                    anyhow!("Tool '{}' is not in the list of available tools", tool_name)
+                })?;
 
             tool_calls.push(ToolCall::new(tool.clone(), args.clone()));
         }
         Ok(tool_calls)
     }
-
 }
